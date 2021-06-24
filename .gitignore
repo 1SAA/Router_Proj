@@ -1,3 +1,6 @@
+# Binary Directory
+build/
+
 # Prerequisites
 *.d
 
