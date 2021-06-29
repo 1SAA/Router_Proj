@@ -12,6 +12,6 @@ endif(DEBUG_OPTION)
 unset(DEBUG_OPTION CACHE)
 
 file(GLOB SRC_FILES src/*.cpp)
-include_directories(src)
+include_directories(src src/flute-3.1)
 
 add_executable(cell_move_router ${SRC_FILES})

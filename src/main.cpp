@@ -14,6 +14,7 @@ int main(int argv, char *argc[]) {
     std::ifstream input(argc[0]);
     std::ofstream output(argc[1]);
 
-    ProblemInfo problem;
-    parse(input, problem);
+    Parser::ProblemInfo problem;
+    Parser::parse(input, problem);
+
 }

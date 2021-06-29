@@ -9,6 +9,9 @@
 #include <iostream>
 #include <vector>
 #include <string>
+
+namespace Parser {
+
 using std::vector;
 using std::string;
 
@@ -121,9 +124,12 @@ public:
  */
 struct VoltageArea {
 public:
+    string name;
     vector<std::pair<int, int> > grids;
     vector<std::string> instNames;
 };
 
 void parse(std::istream &input, ProblemInfo &problem);
+};
+
 #endif

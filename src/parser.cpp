@@ -25,7 +25,7 @@ static bool getLine(std::istream &is, sstream &ss) {
  * @param problem a reference to ProblemInfo data structure
  * @return void
  */
-void parse(std::istream &input, ProblemInfo &problem) {
+void Parser::parse(std::istream &input, ProblemInfo &problem) {
     string str;
     int foobar; /// place holder
     sstream line;
@@ -113,11 +113,15 @@ void parse(std::istream &input, ProblemInfo &problem) {
             problem.areas.resize(size);
 
             for (int i = 0; i < size; ++i) {
+                VoltageArea &area = problem.areas[i];
+
+                getLine(input, line);
+                line >> str >> area.name;
+
                 getLine(input, line);
                 int numGrid, numCell;
                 line >> str >> numGrid;
                 
-                VoltageArea &area = problem.areas[i];
                 area.grids.resize(numGrid);
                 for (int i = 0; i < numGrid; ++i) {
                     getLine(input, line);
