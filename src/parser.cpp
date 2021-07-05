@@ -35,7 +35,7 @@ void Parser::parse(std::istream &input, ProblemInfo &problem) {
         if (type == "MaxCellMove") {
             line >> problem.maxCellMove;
         } else if (type == "GGridBoundaryIdx") {
-            line >> foobar >> problem.gGridX >> foobar >> problem.gGridY;
+            line >> foobar >> foobar >> problem.gGridX >> problem.gGridY;
         } else if (type == "NumLayer") {
             line >> problem.numLayer;
             problem.layers.resize(problem.numLayer);
@@ -54,7 +54,7 @@ void Parser::parse(std::istream &input, ProblemInfo &problem) {
             for (int i = 0; i < size; ++i) {
                 getLine(input, line);
                 NoneDefSupply &s = problem.supplyGrids[i];
-                line >> str >> s.gX >> s.gY >> s.layer >> s.diff;
+                line >> s.gX >> s.gY >> s.layer >> s.diff;
             }
         } else if (type == "NumMasterCell") {
             int size;
@@ -125,7 +125,6 @@ void Parser::parse(std::istream &input, ProblemInfo &problem) {
                 area.grids.resize(numGrid);
                 for (int i = 0; i < numGrid; ++i) {
                     getLine(input, line);
-                    int gX, gY;
                     line >> area.grids[i].first  >> area.grids[i].second;
                 }
 
@@ -133,7 +132,7 @@ void Parser::parse(std::istream &input, ProblemInfo &problem) {
                 line >> str >> numCell;
                 area.instNames.resize(numCell);
                 for (int i = 0; i < numCell; ++i) {
-                    string cellName;
+                    getLine(input, line);
                     line >> area.instNames[i];
                 }
             }

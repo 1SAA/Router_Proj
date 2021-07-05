@@ -15,7 +15,7 @@
 #define MR_FOR_SMALL_CASES_ONLY 1
 #if MR_FOR_SMALL_CASES_ONLY
 #define MAXPART D2M    // max partition of an MST
-#define MAXT (D2M/D*2) 
+#define MAXT (D2M/D*2)
 #else
 #define MAXPART (d/9*2) //(MAXD/THD*2) // max partition of an MST
 #define MAXPART2 ((t1.deg+t2.deg)/9*2)
@@ -27,7 +27,7 @@ int D3=INFNTY;
 int FIRST_ROUND=2; // note that num of total rounds = 1+FIRST_ROUND
 int EARLY_QUIT_CRITERIA=1;
 
-#define DEFAULT_QSIZE (3+min(d,1000))
+#define DEFAULT_QSIZE (3+flute_min(d,1000))
 
 #define USE_HASHING 1
 #if USE_HASHING
@@ -46,10 +46,10 @@ void preprocess_edges(int num_edges, int *edges, DTYPE *len,
 		      int *e, int *p, int *es);
 
 #define init_queue(q) { q[1] = 2; }
-inline void enqueue(int **q, int e)
+void enqueue(int **q, int e)
 {
   int _qsize;
-  if ((*q)[0]==(*q)[1]) { 
+  if ((*q)[0]==(*q)[1]) {
     _qsize=2*((*q)[0]+1);
     (*q)=(int*)realloc((*q), _qsize*sizeof(int));
     (*q)[0]=_qsize;
@@ -62,7 +62,7 @@ DTYPE **hdist;
 typedef struct node_pair_s { // pair of nodes representing an edge
   int node1, node2;
 } node_pair;
-node_pair *heap; //heap[MAXD*MAXD]; 
+node_pair *heap; //heap[MAXD*MAXD];
 int heap_size=0;
 int max_heap_size = MAX_HEAP_SIZE;
 
@@ -171,7 +171,7 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
 #if MR_FOR_SMALL_CASES_ONLY
   int isPin_base[D2M], *isPin, id[2*D2M];
   int u, v, b[D2M*2];
-#else  
+#else
   int *isPin_base, *isPin, *id;
   int u, v, *b;
 
@@ -204,11 +204,11 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
     }
 
   }
-  
+
   for (i=0; i<dd; i++) {
     id[i] = i;
   }
-    
+
   for (i=0; i<dd; i++) {
     n = t.branch[i].n;
     if (isPin[n]>=0 || n==i) {
@@ -222,7 +222,7 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
     }
 
   }
-  
+
   for (i=0; i<dd; i++) {
     while (id[i]!=id[id[i]]) {
       id[i] = id[id[i]];
@@ -232,16 +232,16 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
   x1 = y1 = INFNTY;
   x2 = y2 = 0;
   for (i=0; i<t.deg; i++) {
-    x1 = min(x1, t.branch[i].x);
-    y1 = min(y1, t.branch[i].y);
-    x2 = max(x2, t.branch[i].x);
-    y2 = max(y2, t.branch[i].y);
+    x1 = flute_min(x1, t.branch[i].x);
+    y1 = flute_min(y1, t.branch[i].y);
+    x2 = flute_max(x2, t.branch[i].x);
+    y2 = flute_max(y2, t.branch[i].y);
   }
 
   threshold_x = (x2 - x1)/4;
   threshold_y = (y2 - y1)/4;
-  threshold_x = min(threshold_x, longest);
-  threshold_y = min(threshold_y, longest);
+  threshold_x = flute_min(threshold_x, longest);
+  threshold_y = flute_min(threshold_y, longest);
 
   for (i=0; i<dd; i++) {
     b[i] = i;
@@ -328,15 +328,15 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
       p2 = (node3 < 0) ? node4 : ((node4 < 0) ? node3 : -1);
 
       if (p1 >= 0 && p2 < 0) {
-	dist[p1][node3] = 
+	dist[p1][node3] =
 	  ADIFF(t.branch[p1].x, t.branch[node3].x) +
 	  ADIFF(t.branch[p1].y, t.branch[node3].y);
-	dist[p1][node4] = 
+	dist[p1][node4] =
 	  ADIFF(t.branch[p1].x, t.branch[node4].x) +
 	  ADIFF(t.branch[p1].y, t.branch[node4].y);
 	p2 = (dist[p1][node3] <= dist[p1][node4]) ? node3 : node4;
       } else if (p1 < 0 && p2 >= 0) {
-	dist[node1][p2] = 
+	dist[node1][p2] =
 	  ADIFF(t.branch[node1].x, t.branch[p2].x) +
 	  ADIFF(t.branch[node1].y, t.branch[p2].y);
 	dist[node2][p2] =
@@ -345,7 +345,7 @@ void update_dist2(Tree t, DTYPE **dist, DTYPE longest,
 	p1 = (dist[node1][p2] <= dist[node2][p2]) ? node1 : node2;
       } else if (p1 < 0 && p2 < 0) {
 	// all 4 nodes are real, pick the closest pair
-	
+
 	dist[node1][node3] =
 	  ADIFF(t.branch[node1].x, t.branch[node3].x) +
 	  ADIFF(t.branch[node1].y, t.branch[node3].y);
@@ -490,14 +490,14 @@ void build_rmst(long d, DTYPE *x, DTYPE *y, int *edges, int *inMST)
       parent[i] = i-1;
     }
   }
-  
+
   //mst2( d, pt, parent );
   mst2_package_init(n);
 
   mst2( n, pt, par );
 
   mst2_package_done();
-  
+
   /* special treatment for duplicated points not filtered in previous loop */
   for (i=1; i<n; i++) {
     if (par[i]<0) {
@@ -518,7 +518,7 @@ void build_rmst(long d, DTYPE *x, DTYPE *y, int *edges, int *inMST)
     //assert(parent[i]>=0);
     size[parent[i]]++;
   }
-  
+
   idx = 2*d-3;
   for (i=0; i<d; i++) {
     if (inMST[i]) continue;
@@ -559,9 +559,13 @@ Tree flutes_c(int d, DTYPE *xs, DTYPE *ys, int *s, int acc)
     }
     if (i >= d) { // found a match
       tdup = t;
-      tdup.branch = (Branch*)malloc(sizeof(Branch)*(2*d-2));
+      if (d < 2) {
+        tdup.branch = NULL;
+      } else {
+        tdup.branch = (Branch*)malloc(sizeof(Branch)*(2*d-2));
+      }
       for (i=2*d-3; i>=0; i--) {
-	tdup.branch[i] = t.branch[i];
+        tdup.branch[i] = t.branch[i];
       }
       return tdup;
     }
@@ -575,14 +579,14 @@ Tree flutes_c(int d, DTYPE *xs, DTYPE *ys, int *s, int acc)
 
 #if USE_HASHING
   //new_ht = orig_ht_flag;
-      
+
   tdup = t;
   tdup.branch = (Branch*)malloc(sizeof(Branch)*(2*d-2));
   for (i=2*d-3; i>=0; i--) {
     tdup.branch[i] = t.branch[i];
   }
   dl_prepend(Tree, ht[d], tdup);
-#endif  
+#endif
 
   return t;
 }
@@ -590,7 +594,7 @@ Tree flutes_c(int d, DTYPE *xs, DTYPE *ys, int *s, int acc)
 Tree flute_mr(int d, DTYPE *xs, DTYPE *ys, int *s,
 	      int acc, int rounds, DTYPE **dist,
 	      DTYPE *threshold_x, DTYPE *threshold_y,
-	      DTYPE *threshold, 
+	      DTYPE *threshold,
 	      int *best_round,
 	      int *min_node1, int *min_node2,
 	      int **nb)
@@ -782,7 +786,7 @@ Tree flute_mr(int d, DTYPE *xs, DTYPE *ys, int *s,
 
       t = flutes_c(tree_size[subroot[i-1]], x+offset[i], y+offset[i],
 		   new_s+offset[i], acc);
-    
+
       subtree[i-1] = t;
     }
 
@@ -802,7 +806,7 @@ Tree flute_mr(int d, DTYPE *xs, DTYPE *ys, int *s,
 
     t = subtree[0];
     free(subtree);
-  
+
     if (best_t.length < t.length) {
       if (*best_round-rounds >= EARLY_QUIT_CRITERIA) {
 	if (t.branch) {
@@ -838,13 +842,13 @@ Tree flute_mr(int d, DTYPE *xs, DTYPE *ys, int *s,
 
     rounds--;
   }
-  
+
 #if !(MR_FOR_SMALL_CASES_ONLY)
   free(subroot); free(suproot); free(idx); free(offset); free(order);
   free(isSuperRoot); free(tree_id); free(tree_size); free(edges);
   free(order_base); free(new_s); free(si); free(xmap); free(x); free(y);
 #endif
-  
+
 #if USE_HASHING
   if (new_ht) {
     for (i=0; i<=d; i++) {
@@ -855,11 +859,11 @@ Tree flute_mr(int d, DTYPE *xs, DTYPE *ys, int *s,
     }
   }
 #endif
-  
+
   return best_t;
 }
 
-Tree flute_am(int d, DTYPE *xs, DTYPE *ys, int *s, int acc, 
+Tree flute_am(int d, DTYPE *xs, DTYPE *ys, int *s, int acc,
 	      DTYPE *threshold_x, DTYPE *threshold_y, DTYPE *threshold)
 {
   int i, j, k, m, n, itr, node1, node2;
@@ -1050,14 +1054,14 @@ Tree flute_am(int d, DTYPE *xs, DTYPE *ys, int *s, int acc,
 		   order[tree_id[suproot[i]]-1],
 		   order[tree_id[subroot[i]]-1],
 		   xs[s[suproot[i]]], ys[suproot[i]]);
-    
+
     subtree[tree_id[subroot[i]]-1].deg = 0;
     subtree[tree_id[suproot[i]]-1] = t;
   }
 
   t0 = subtree[0];
   free(subtree);
-  
+
   t = t0;
 
   free(x); free(y); free(isSuperRoot); free(tree_id); free(tree_size);
@@ -1076,7 +1080,7 @@ Tree flutes_HD(int d, DTYPE *xs, DTYPE *ys, int *s, int acc)
   int best_round, min_node1, min_node2;
   int **nb;
   DTYPE prev_len;
-  
+
   //Chris
   if (d<=D2(acc)) {
       if (acc <= 6) {
@@ -1117,7 +1121,7 @@ Tree flutes_HD(int d, DTYPE *xs, DTYPE *ys, int *s, int acc)
       if (orig_D3 >= INFNTY && d > 1000) {
 	D3 = (d <= 10000) ? 1000 : 10000;
       }
-      t = flute_am(d, xs, ys, s, A, 
+      t = flute_am(d, xs, ys, s, A,
 		   &threshold_x, &threshold_y, &threshold);
       if (orig_D3 >= INFNTY) {
 	D3 = orig_D3;
@@ -1199,7 +1203,7 @@ int pickWin(Tree t, DTYPE cx, DTYPE cy, int inWin[])
     }
   }
   //assert(top > 0);
-  
+
   while (top > 0) {
     i = stack[--top];
     if (inWin[i]) {
@@ -1223,7 +1227,7 @@ int pickWin(Tree t, DTYPE cx, DTYPE cy, int inWin[])
       }
     }
   }
-  
+
   for (i=0; i<t.deg; i++) {
     if (inWin[i]) {
       n = t.branch[i].n;
@@ -1252,7 +1256,7 @@ int pickWin(Tree t, DTYPE cx, DTYPE cy, int inWin[])
 }
 
 /* merge tree t2 into tree t1, which have shared common nodes.  The intention
-   is to add the non-common tree nodes of t2 into t1, as well as the 
+   is to add the non-common tree nodes of t2 into t1, as well as the
    associated steiner nodes */
 Tree merge_into(Tree t1, Tree t2, int common[], int nc, int *o1, int *o2)
 {
@@ -1269,7 +1273,7 @@ Tree merge_into(Tree t1, Tree t2, int common[], int nc, int *o1, int *o2)
   reachable = (int*)malloc(sizeof(int)*(t1.deg+t2.deg)*2);
   o = (int*)malloc(sizeof(int)*(t1.deg+t2.deg+MAXPART2));
 #endif
-  
+
   if (t2.deg <= nc) {
     free(t2.branch);
 #if !(MR_FOR_SMALL_CASES_ONLY)
@@ -1441,7 +1445,7 @@ Tree smergetree(Tree t1, Tree t2, int *o1, int *o2,
   int *o, *map;
 
   map = (int*)malloc(sizeof(int)*(t1.deg+t2.deg)*2);
-  o = (int*)malloc(sizeof(int)*(t1.deg+t2.deg+MAXPART2));  
+  o = (int*)malloc(sizeof(int)*(t1.deg+t2.deg+MAXPART2));
 #endif
 
   t.deg = t1.deg + t2.deg - 1;
@@ -1695,7 +1699,7 @@ Tree wmergetree(Tree t1, Tree t2, int *order1, int *order2,
     t3 = flutes_LMD(d, x, y, os, acc);
     t = merge_into(t3, t2, inWin+2*t1.deg, d2, o, order2);
     t4 = merge_into(t, t1, inWin, d+1-d2, o, order1);
-  } else 
+  } else
   if (t2.deg > 2) {
     for (i=0; i<t2.deg; i++) {
       o[i]=order2[i];
@@ -1707,7 +1711,7 @@ Tree wmergetree(Tree t1, Tree t2, int *order1, int *order2,
     }
     t4 = smergetree(t1, t2, o, order2, cx, cy);
   }
-  
+
   for (i=0; i<t4.deg; i++) {
     order1[i] = o[i];
   }
@@ -1830,7 +1834,7 @@ TreeNode *createRootedTree(Tree t, int *order, int id, dl_t list_of_nodes)
     nodes[i]->x = t.branch[i].x;
     nodes[i]->y = t.branch[i].y;
 
-    /* len will be computed in update_subtree 
+    /* len will be computed in update_subtree
     nodes[i]->blen =
       ADIFF(t.branch[i].x, t.branch[n].x)+ADIFF(t.branch[i].y, t.branch[n].y);
 
@@ -1843,7 +1847,7 @@ TreeNode *createRootedTree(Tree t, int *order, int id, dl_t list_of_nodes)
   }
 
   //assert(root);
-  
+
   update_subtree(root, 0);
 
   for (i=0; i<dd; i++) {
@@ -1872,7 +1876,7 @@ int cmpNodeByYX(const void* a, const void* b)
   DTYPE ay = (*(TreeNode**)a)->y;
   DTYPE by = (*(TreeNode**)b)->y;
   DTYPE ax, bx;
-  
+
   if (ay < by) return -1;
   if (ay > by) return 1;
 
@@ -1889,7 +1893,7 @@ int cmpNodeByXY(const void* a, const void* b)
   DTYPE ax = (*(TreeNode**)a)->x;
   DTYPE bx = (*(TreeNode**)b)->x;
   DTYPE ay, by;
-  
+
   if (ax < bx) return -1;
   if (ax > bx) return 1;
 
@@ -1976,7 +1980,7 @@ int cmpNodeByOrder(void* a, void* b)
 {
   int ax = (*(TreeNode**)a)->order;
   int bx = (*(TreeNode**)b)->order;
-  
+
   if (ax < bx) return -1;
   if (ax > bx) return 1;
   return 0;
@@ -2045,7 +2049,11 @@ Tree mergeRootedTrees(TreeNode *tn1, TreeNode *tn2, int *order1)
 
   //assert(i<=2*t.deg-2);
 
-  t.branch = (Branch*)malloc(sizeof(Branch)*(t.deg*2-2));
+  if (t.deg < 2) {
+    t.branch = NULL;
+  } else {
+    t.branch = (Branch*)malloc(sizeof(Branch)*(t.deg*2-2));
+  }
 
   redundant = i;
   for (; i<2*t.deg-2; i++) {
@@ -2128,7 +2136,7 @@ void collect_nodes(TreeNode* tn, dl_t nlist)
 {
   /*
   TreeNode* c;
-  
+
   dl_append(TreeNode*, nlist, tn);
   dl_forall(TreeNode*, tn->children, c) {
     collect_nodes(c, nlist);
@@ -2137,7 +2145,7 @@ void collect_nodes(TreeNode* tn, dl_t nlist)
   // non-recursive version
   TreeNode* c;
   dl_el *curr;
-  
+
   dl_append(TreeNode*, nlist, tn);
 
   for (curr=nlist->last; curr; curr=curr->next) {
@@ -2162,7 +2170,7 @@ int cmpXdata(void *a, void *b)
   return 0;
 }
 
-inline TreeNode *cedge_lca(TreeNode* n1, TreeNode* n2, DTYPE *len, int *n2ton1)
+TreeNode *cedge_lca(TreeNode* n1, TreeNode* n2, DTYPE *len, int *n2ton1)
 {
   int i;
   TreeNode *curr, *lca, *e;
@@ -2289,7 +2297,7 @@ void cut_and_splice(TreeNode *n1, TreeNode *n2,
 		    TreeNode *e, int n2ton1)
 {
   TreeNode *p1, *node, *s;
-  
+
   /* new steiner node */
   p1 = n1->parent;
   remove_child(p1->children, n1);
@@ -2363,7 +2371,7 @@ typedef struct {
   int n2ton1;
 } splice_info;
 
-DTYPE exchange_branches_order_x(int num_nodes, TreeNode **nodes, 
+DTYPE exchange_branches_order_x(int num_nodes, TreeNode **nodes,
 				DTYPE threshold_x, DTYPE threshold_y,
 				DTYPE max_len)
 {
@@ -2453,7 +2461,7 @@ DTYPE exchange_branches_order_x(int num_nodes, TreeNode **nodes,
 
       min_dist = n2->x - x2;
 
-      if (abs(min_dist) > threshold_x) {
+      if (flute_abs(min_dist) > threshold_x) {
 	continue;
       } else if (min_dist < 0) {
 	min_dist = 0;
@@ -2461,7 +2469,7 @@ DTYPE exchange_branches_order_x(int num_nodes, TreeNode **nodes,
       } else {
 	new_x = x2;
       }
-      
+
       if (n2->y < y1) {
 	min_dist += y1 - n2->y;
 	new_y = y1;
@@ -2515,7 +2523,7 @@ DTYPE exchange_branches_order_x(int num_nodes, TreeNode **nodes,
   return gain;
 }
 
-DTYPE exchange_branches_order_y(int num_nodes, TreeNode **nodes, 
+DTYPE exchange_branches_order_y(int num_nodes, TreeNode **nodes,
 				DTYPE threshold_x, DTYPE threshold_y,
 				DTYPE max_len)
 {
@@ -2604,7 +2612,7 @@ DTYPE exchange_branches_order_y(int num_nodes, TreeNode **nodes,
 
       min_dist = n2->y - y2;
 
-      if (abs(min_dist) > threshold_y) {
+      if (flute_abs(min_dist) > threshold_y) {
 	continue;
       } else if (min_dist < 0) {
 	min_dist = 0;
@@ -2612,7 +2620,7 @@ DTYPE exchange_branches_order_y(int num_nodes, TreeNode **nodes,
       } else {
 	new_y = y2;
       }
-      
+
       if (n2->x < x1) {
 	min_dist += x1 - n2->x;
 	new_x = x1;
@@ -2724,8 +2732,8 @@ Tree xmergetree(Tree t1, Tree t2, int *order1, int *order2,
   threshold_x = (max_x - min_x)/4;
   threshold_y = (nodes[num-1]->y - nodes[0]->y)/4;
 
-  threshold_x = min(threshold_x, max_len);
-  threshold_y = min(threshold_y, max_len);
+  threshold_x = flute_min(threshold_x, max_len);
+  threshold_y = flute_min(threshold_y, max_len);
 
   for (cnt=(t1.deg+t2.deg)/2; cnt>0; cnt--) {
     gain = (order_by_x) ?
@@ -2778,4 +2786,3 @@ Tree xmergetree(Tree t1, Tree t2, int *order1, int *order2,
 
   return t;
 }
-

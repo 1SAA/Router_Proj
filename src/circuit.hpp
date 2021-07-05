@@ -1,6 +1,7 @@
 #ifndef CIRCUIT_HPP
 #define CIRCUIT_HPP
 
+#include <iostream>
 #include <vector>
 #include <cstring>
 #include <string>
@@ -9,11 +10,27 @@
 class Point {
 public:
     int x, y, z;
+    Point() = default;
     Point(int _x, int _y, int _z): x(_x), y(_y), z(_z) {}
+    bool operator == (const Point &a) {
+        return x == a.x && y == a.y && z == a.z;
+    }
+    Point operator + (const Point &a) {
+        return Point(x + a.x, y + a.y, z + a.z);
+    }
+    Point operator - (const Point &a) {
+        return Point(x - a.x, y - a.y, z - a.z);
+    }
+    Point &operator = (const Point &a) = default;
+    friend std::ostream &operator << (std::ostream &os, const Point &p) {
+        os << "(" << p.x << ", " << p.y << ", " << p.z << ", " << ")";
+        return os;
+    }
 };
 
 class Segment {
 public:
+    Segment() = default;
     Point spoint, epoint;
     Segment(Point s, Point e): spoint(s), epoint(e) {}
     bool isVertical() {return spoint.y != epoint.y;}
@@ -26,6 +43,7 @@ public:
     std::string name;
     int idx, horv, supply;
     float powerFactor;
+    Layer() = default;
     Layer(const std::string &n, int id, int hv, int s, float p):
         name(n), idx(id), horv(hv), supply(s), powerFactor(p) {}
 };
@@ -34,6 +52,7 @@ class NoneDefaultSupply {
 public:
     Point position;
     int addition;
+    NoneDefaultSupply() = default;
     NoneDefaultSupply(Point p, int a): position(p), addition(a) {}
 };
 
@@ -41,6 +60,7 @@ class Pin {
 public:
     std::string name;
     int layerNum;
+    Pin() = default;
     Pin(const std::string &n, int l): name(n), layerNum(l) {}
 };
 
@@ -48,6 +68,7 @@ class Blockage {
 public:
     std::string name;
     int layerNum, demand;
+    Blockage() = default;
     Blockage(std::string n, int l, int d): name(n), layerNum(l), demand(d) {}
 };
 
@@ -59,6 +80,7 @@ public:
     std::map<std::string, int> s2pin;
     std::vector<Blockage> blocks;
     std::map<std::string, int> s2block;
+    MasterCell() = default;
     MasterCell(const std::string &n, int pc, int bc): name(n), pinCount(pc), blockageCount(bc) {
         pins.resize(pc); s2pin.clear();
         blocks.resize(bc); s2block.clear();
@@ -70,11 +92,15 @@ public:
     std::string name;
     Point position;
     int masterCell, movable, voltageLabel;
-
+    bool movedFlag;
+    std::vector<int> NetIds; /// nets associate with this cell inst
+    CellInst() = default;
     CellInst(std::string n, Point p, int ma, int mo, int _voltageLabel): 
     name(n), position(p), masterCell(ma), movable(mo),
     voltageLabel(_voltageLabel)
-    {}
+    {
+        movedFlag = 0;
+    }
 };
 
 class Net {
@@ -83,10 +109,11 @@ public:
     int pinCount, minConstraint;
     float weight;
     struct NetPin {
-        int inst, pin;
+        int inst, pin, layer;
     };
     std::vector<NetPin> pins;
     std::vector<Segment> segments;
+    Net() = default;
     Net(std::string n, int p, int m, float w): name(n), pinCount(p), minConstraint(m), weight(w) {
         pins.resize(p);
         segments.clear();

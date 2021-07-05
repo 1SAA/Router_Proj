@@ -1,4 +1,4 @@
-#include <dl.h>
+#include "dl.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -76,13 +76,13 @@ static void dl_insertion_sort(dl_t dl, size_t el_size,
     for (srch=dl->last; srch!=curr; srch=srch->prev) {
       srch_d = (void*)(((dl_el*)srch)+1);
       if (compar(curr_d, srch_d) > 0) {
-	memcpy((void*)buf, curr_d, el_size);	
+	memcpy((void*)buf, curr_d, el_size);
 	memcpy(curr_d, srch_d, el_size);
 	memcpy(srch_d, (void*)buf, el_size);
       }
     }
   }
-  
+
 
   free(buf);
 }

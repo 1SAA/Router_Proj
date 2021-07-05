@@ -12,6 +12,9 @@
     } while (0)
 
 #define dbg_print(format, ...) \
+  fprintf (stderr, format, ##__VA_ARGS__)
+
+#define dbg_print_line(format, ...) \
   fprintf (stderr, "Error at %s:%d " format, __FILE__, __LINE__, ##__VA_ARGS__)
 
 #endif

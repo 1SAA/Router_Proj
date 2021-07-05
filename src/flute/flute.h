@@ -1,3 +1,4 @@
+#pragma once
 /*****************************/
 /*  User-Defined Parameters  */
 /*****************************/
@@ -48,8 +49,12 @@ typedef struct
     Branch *branch;   // array of tree branches
 } Tree;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // User-Callable Functions
-extern void readLUT();
+// extern void readLUT();
 extern DTYPE flute_wl(int d, DTYPE x[], DTYPE y[], int acc);
 //Macro: DTYPE flutes_wl(int d, DTYPE xs[], DTYPE ys[], int s[], int acc);
 extern Tree flute(int d, DTYPE x[], DTYPE y[], int acc);
@@ -68,12 +73,16 @@ extern Tree flutes_MD(int d, DTYPE xs[], DTYPE ys[], int s[], int acc);
 extern Tree flutes_HD(int d, DTYPE xs[], DTYPE ys[], int s[], int acc);
 extern Tree flutes_RDP(int d, DTYPE xs[], DTYPE ys[], int s[], int acc);
 
+#ifdef __cplusplus
+}
+#endif
+
 #if REMOVE_DUPLICATE_PIN==1
-  #define flutes_wl(d, xs, ys, s, acc) flutes_wl_RDP(d, xs, ys, s, acc) 
-  #define flutes(d, xs, ys, s, acc) flutes_RDP(d, xs, ys, s, acc) 
+  #define flutes_wl(d, xs, ys, s, acc) flutes_wl_RDP(d, xs, ys, s, acc)
+  #define flutes(d, xs, ys, s, acc) flutes_RDP(d, xs, ys, s, acc)
 #else
-  #define flutes_wl(d, xs, ys, s, acc) flutes_wl_ALLD(d, xs, ys, s, acc) 
-  #define flutes(d, xs, ys, s, acc) flutes_ALLD(d, xs, ys, s, acc) 
+  #define flutes_wl(d, xs, ys, s, acc) flutes_wl_ALLD(d, xs, ys, s, acc)
+  #define flutes(d, xs, ys, s, acc) flutes_ALLD(d, xs, ys, s, acc)
 #endif
 
 #define flutes_wl_ALLD(d, xs, ys, s, acc) flutes_wl_LMD(d, xs, ys, s, acc)
@@ -87,7 +96,7 @@ extern Tree flutes_RDP(int d, DTYPE xs[], DTYPE ys[], int s[], int acc);
 #define flutes_LMD(d, xs, ys, s, acc) \
     (d<=D ? flutes_LD(d, xs, ys, s) : flutes_MD(d, xs, ys, s, acc))
 
-#define max(x,y) ((x)>(y)?(x):(y))
-#define min(x,y) ((x)<(y)?(x):(y))
-#define abs(x) ((x)<0?(-x):(x))
+#define flute_max(x,y) ((x)>(y)?(x):(y))
+#define flute_min(x,y) ((x)<(y)?(x):(y))
+#define flute_abs(x) ((x)<0?(-x):(x))
 #define ADIFF(x,y) ((x)>(y)?(x-y):(y-x))  // Absolute difference

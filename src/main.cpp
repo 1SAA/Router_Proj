@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include "parser.h"
+#include "solver.h"
 #include "utils.h"
 
 int main(int argv, char *argc[]) {
@@ -11,10 +12,13 @@ int main(int argv, char *argc[]) {
         std::cerr << "./cell_move_router <input_file> <output_file>\n";
         exit(0);
     }
-    std::ifstream input(argc[0]);
-    std::ofstream output(argc[1]);
+    std::ifstream input(argc[1]);
+    std::ofstream output(argc[2]);
 
     Parser::ProblemInfo problem;
     Parser::parse(input, problem);
-
+    Solver solver(problem);
+    solver.print();
+    
+    solver.print_solution(output);
 }

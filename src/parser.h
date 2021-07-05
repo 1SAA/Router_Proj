@@ -90,7 +90,7 @@ struct NetInfo {
 public:
     string name;
     int cntPin, minRoutingLayConstr;
-    double weight;
+    float weight;
     vector<PinInfo> pins;
 };
 
@@ -107,7 +107,7 @@ struct LayerInfo {
 public:
     string name;
     int idx, direction, defSupply;
-    double powerFactor;
+    float powerFactor;
 };
 
 /** @brief Information of a Routing Segments
