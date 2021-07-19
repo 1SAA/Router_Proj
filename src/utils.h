@@ -2,6 +2,7 @@
 #define __UTILS_H__
 
 #include <cstdio>
+#include <cassert>
 
 #ifndef DEBUG_FLAG
 #define DEBUG_FLAG 0

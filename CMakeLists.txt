@@ -15,7 +15,8 @@ unset(DEBUG_OPTION CACHE)
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 file(GLOB_RECURSE FLUTE src/flute/*.c)
 
-include_directories(src src/flute)
+include_directories(src/flute 
+                    src)
 add_library(flute STATIC ${FLUTE})
 add_executable(cell_move_router ${SRC_FILES})
 target_link_libraries(cell_move_router flute)

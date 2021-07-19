@@ -22,7 +22,7 @@ public:
 private:
     Position coord;
     int numLayers;
-    int voltageLabel;
+    int voltageLabel, Xcon, Ycon;
     std::vector<Congestion> layerCon;
 public:
     Grid() {}

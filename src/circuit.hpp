@@ -12,6 +12,7 @@ public:
     int x, y, z;
     Point() = default;
     Point(int _x, int _y, int _z): x(_x), y(_y), z(_z) {}
+    Point(int _x, int _y) : Point(_x, _y, 0) {}
     bool operator == (const Point &a) {
         return x == a.x && y == a.y && z == a.z;
     }
@@ -22,6 +23,9 @@ public:
         return Point(x - a.x, y - a.y, z - a.z);
     }
     Point &operator = (const Point &a) = default;
+    int norm1() {
+        return std::abs(x) + std::abs(y) + std::abs(z);
+    }
     friend std::ostream &operator << (std::ostream &os, const Point &p) {
         os << "(" << p.x << ", " << p.y << ", " << p.z << ", " << ")";
         return os;

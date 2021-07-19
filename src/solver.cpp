@@ -2,8 +2,8 @@
 #include <map>
 #include <unordered_set>
 #include <iostream>
+#include <algorithm>
 #include "solver.h"
-#include "flute.h"
 
 /**
  * @brief Init solver from ProblemInfo
@@ -43,7 +43,10 @@ Solver::Solver(Parser::ProblemInfo &problem) {
         Layers[id] = Layer(x.name, x.idx, x.direction, x.defSupply, x.powerFactor);
         name2layer[x.name] = id;
     }
-
+    powerPrefixSum.resize(numLayer + 1, 0.0);
+    for (int i = 1; i <= numLayer; ++i)
+        powerPrefixSum[i] = powerPrefixSum[i - 1] + Layers[i].powerFactor;
+        
     /// Master Cells
     mCells.resize(numMaster);
     i = 0;
@@ -164,17 +167,6 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
 
 }
 
-/**
- * @brief route 2-pin net
- * @param st start point
- * @param en end point
- * @param seg reference to the vector used to store the routing result
- * @return bool 
- */
-bool Solver::route_two_pin(Point st, Point en, int min_layer, std::vector<Segment> &seg) {
-    return false;
-}
-
 static void explore(Tree &t) {
     dbg_print("print Steiner Tree\n");
     dbg_print("====================\n");
@@ -189,33 +181,24 @@ static void explore(Tree &t) {
 }
 
 /**
- * @brief route a net at best effort
- * @param netid id of the net to be routed
+ * @brief route nets, first do 2d routing, then do layer assignment
+ * @param ids nets that needs to be routed
  * @return bool route successful or not
  */
-bool Solver::route_net(int netid) {
-    /// call flute, using acc=3
-    int deg = Nets[netid].pins.size();
-    int *xs = new DTYPE [deg];
-    int *ys = new DTYPE [deg];
-
-    for (int i = 0; i < deg; ++i) {
-        int inst = Nets[netid].pins[i].inst;
-        xs[i] = cInsts[inst].position.x;
-        ys[i] = cInsts[inst].position.y;
-    }
-
-    const int FLUTE_ACC = 3;
-    Tree t = flute(deg, xs, ys, FLUTE_ACC);
-    DEBUG(explore(t));
-
-    /// layer assignment
+bool Solver::route_nets(std::vector<int> &ids) {
+    /// init 2d routing info
+    std::vector<RouteInfo> r2d;
+    for (auto &id : ids) 
+        r2d.push_back(init2d(id));
     
-    /// two-pin net routing
-
-    delete xs;
-    delete ys;
-
+    /// do 2d routing
+    for (auto &info : r2d)
+        route2d(info);
+    
+    /// 3d routing, i.e. layer assignment
+    for (auto &info : r2d)
+        route3d(info);
+    /// retrieve 3d routing results
     return false;
 }
 
@@ -227,7 +210,7 @@ bool Solver::route_net(int netid) {
  */
 bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<Point> &new_locs) {
     /// find nets that are affected
-    std::unordered_set<int> changed_net;
+    std::vector<int> changed_net;
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
         if (cInsts[id].position == new_locs[i])
@@ -237,9 +220,11 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
             cntCellMove++;
         }
         for (auto &net_id : cInsts[id].NetIds) 
-            changed_net.insert(net_id);
+            changed_net.push_back(net_id);
     }
 
+    std::sort(changed_net.begin(), changed_net.end());
+    changed_net.end() = std::unique(changed_net.begin(), changed_net.end());
     /// update blockage
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
@@ -255,9 +240,7 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
     for (auto &x : changed_net)
         ripup(x);
     /// reroute these nets
-    for (auto &x : changed_net) /// TODO: in which order to route these nets
-        route_net(x);
-
+    route_nets(changed_net);
     return false;
 }
 

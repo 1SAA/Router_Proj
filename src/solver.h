@@ -4,6 +4,7 @@
 #include "grids.h"
 #include "circuit.hpp"
 #include "parser.h"
+#include "router.h"
 
 class Solver {
 private:
@@ -12,14 +13,23 @@ private:
     std::vector<CellInst> cInsts; /// vector of cell instances
     std::vector<Net> Nets; /// net
     std::vector<Layer> Layers; /// layers
+    std::vector<float> powerPrefixSum; /// prefix sum of layers' power factors
     std::vector<VoltageArea> VAreas; /// voltage areas
     int maxCellMove, cntCellMove, numRow, numCol, numLayer;
     int numMaster, numNet, numInst;
     void canonicalize(std::vector<Segment> &route_seg);
     void increase_congestion(int netid);
     void ripup(int netid);
-    bool route_two_pin(Point st, Point en, int min_layer, std::vector<Segment> &seg);
-    bool route_net(int netid);
+    RouteInfo init2d(int netid);
+    bool route2d(RouteInfo &info);
+    bool route2pin2d(Edge &twopin);
+    bool route_nets(std::vector<int> &ids);
+    bool route3d(RouteInfo &info);
+    int get3DCon(Point st, Point en);
+    void edge_dp(Edge &edge, int min_layer);
+    void assign_layer_dp(Node &node, int min_layer);
+    void assign_layer_compute_seg(Node &node, int min_layer);
+    int get2DCon(Point st, Point en);
 public:
     Solver(Parser::ProblemInfo &problem);
     bool route_after_move(const std::vector<int>& insts, const std::vector<Point>& new_locs);
