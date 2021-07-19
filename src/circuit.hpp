@@ -37,15 +37,15 @@ public:
     Segment() = default;
     Point spoint, epoint;
     Segment(Point s, Point e): spoint(s), epoint(e) {}
-    bool isVertical() {return spoint.y != epoint.y;}
-    bool isHorizontal() {return spoint.x != epoint.x;}
+    bool isVertical() {return spoint.x != epoint.x;}
+    bool isHorizontal() {return spoint.y != epoint.y;}
     bool isVia() {return spoint.z != epoint.z;}
 };
 
 class Layer {
 public:
     std::string name;
-    int idx, horv, supply;
+    int idx, horv, supply; /// 0 horizontal, 1 vertical
     float powerFactor;
     Layer() = default;
     Layer(const std::string &n, int id, int hv, int s, float p):
