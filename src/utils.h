@@ -18,4 +18,7 @@
 #define dbg_print_line(format, ...) \
   fprintf (stderr, "Error at %s:%d " format, __FILE__, __LINE__, ##__VA_ARGS__)
 
+const float F_INF = 1e9;
+const int INF = 0x3f3f3f3f;
+
 #endif

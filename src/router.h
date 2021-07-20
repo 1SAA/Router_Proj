@@ -39,6 +39,7 @@ public:
     int netid;
     STtree tree;
     std::vector<Edge*> edges;
+    std::vector<Segment> segs_3d;
 };
 
 #endif
