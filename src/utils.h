@@ -20,5 +20,4 @@
 
 const float F_INF = 1e9;
 const int INF = 0x3f3f3f3f;
-
 #endif

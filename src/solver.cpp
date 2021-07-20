@@ -3,6 +3,7 @@
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
+#include <list>
 #include "solver.h"
 
 /**
@@ -89,24 +90,29 @@ Solver::Solver(Parser::ProblemInfo &problem) {
         }
     }
 
-    /// Init Grid
-    Circuit.resize(numRow + 1, std::vector<Grid>(numCol + 1));
+    // Init Grid DataBase    
+    DataBase = GridDB(numRow, numCol, numLayer);
     for (int i = 1; i <= numRow; ++i) {
         for (int j = 1; j <= numCol; ++j) {
-            Circuit[i][j] = Grid({i, j}, numLayer + 1, -1);
             for (int k = 1; k <= numLayer; ++k)
-                Circuit[i][j][k].supply = Layers[k].supply;
+                DataBase.getSupply({i, j, k}) = Layers[k].supply;
         }
     }
-    
     for (int i = 0, n = VAreas.size(); i < n; ++i) {
         for (auto p : VAreas[i].area) {
-            Circuit[p.x][p.y].getVoltageLabel() = i;
+            DataBase.getVoltageLable({p.x, p.y}) = i;
         }
     }
 
     for (auto &p : problem.supplyGrids) 
-        Circuit[p.gX][p.gY][p.layer].supply += p.diff;
+        DataBase.getSupply({p.gX, p.gY, p.layer}) += p.diff;
+
+    // Blockages
+    for (auto &c : cInsts) {
+        auto m = mCells[c.masterCell];
+        for (auto &b : m.blocks) 
+            DataBase.incDemand({c.position.x, c.position.y, b.layerNum}, b.demand);
+    }
 
     /// Nets and Segments
     i = 0;
@@ -129,42 +135,43 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     for (auto &x : problem.routes) {
         int netid = name2net[x.netName];
         Nets[netid].segments.push_back(Segment(Point(x.sX, x.sY, x.sL), Point(x.eX, x.eY, x.eL)));
-        // TODO Canonicalize routing segments
-        // Routing Segments may have intersections
-        /*
-            canonicalize(Nets[netid].segments);
-        */
+        canonicalize(Nets[netid].segments);
+        DataBase.inc3DCon(Nets[netid].segments, 1);
     }
-
-    /// Update Demand
-    for (int i = 0, n = Nets.size(); i < n; ++i)
-        increase_congestion(i);
+    DataBase.get2DFrom3D();
 }
 
 /**
- * @brief call this function after reroute to increase congestion
- * @param netid id of the rerouted net
- */
-void Solver::increase_congestion(int netid) {
-
-}
-
-/**
- * @brief ripup a net and decrease congestion
- * @param netid id of the ripuped net
- */
-void Solver::ripup(int netid) {
-
-}
-
-/**
- * @brief remove routing segment intersections
+ * @brief remove routing segment intersections. Intersections between H/V-segments and Z-segments
+ *        are not eliminated.
  * @param route_seg reference to routing segments of a net
  *                  call this function may change this parameter
  * @return void
  */
 void Solver::canonicalize(std::vector<Segment> &route_seg) {
+    std::list<Segment> segList;
 
+    for (auto &seg : route_seg) {
+        if (seg.spoint == seg.epoint)
+            continue;
+        segList.push_back(seg);
+    }
+
+    route_seg.clear();
+    for (auto iter = segList.begin(); iter != segList.end(); ) {
+        Segment curSeg = *iter;
+        auto nxt = iter;
+        nxt++;
+        while (nxt != segList.end()) {
+            if (Segment::isIntersect(curSeg, *nxt)) {
+                *nxt = Segment::Merge(curSeg, *nxt);
+                break;
+            } else 
+                nxt++;
+        }
+        segList.erase(++iter);
+        route_seg.push_back(curSeg);
+    }
 }
 
 static void explore(Tree &t) {
@@ -187,18 +194,42 @@ static void explore(Tree &t) {
  */
 bool Solver::route_nets(std::vector<int> &ids) {
     /// init 2d routing info
+    /// TODO restore changes if failed
+
     std::vector<RouteInfo> r2d;
     for (auto &id : ids) 
         r2d.push_back(init2d(id));
     
     /// do 2d routing
-    for (auto &info : r2d)
-        route2d(info);
+    std::vector<std::vector<Segment> > backup;
+    for (auto &info : r2d) {
+        if (route2d(info) == false) {
+            for (auto &x : backup)
+                DataBase.inc2DCon(x, 1);
+            return false;
+        }
+        std::vector<Segment> segs_2d;
+        for (auto edge : info.edges)
+            segs_2d.insert(segs_2d.begin(), edge->segs.begin(), edge->segs.end());
+        canonicalize(segs_2d);
+        DataBase.inc2DCon(segs_2d, -1);
+        backup.push_back(segs_2d);
+    }
     
+    backup.clear();
     /// 3d routing, i.e. layer assignment
+    for (auto &info : r2d) {
+        if (route3d(info) == false) {
+            for (auto &x : backup)
+                DataBase.inc3DCon(x, 1);
+            return false;
+        }
+        canonicalize(info.segs_3d);
+        DataBase.inc3DCon(info.segs_3d, -1);
+        backup.push_back(info.segs_3d);
+    }
     for (auto &info : r2d)
-        route3d(info);
-    /// retrieve 3d routing results
+        Nets[info.netid].segments = info.segs_3d;
     return false;
 }
 
@@ -225,23 +256,33 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
 
     std::sort(changed_net.begin(), changed_net.end());
     changed_net.end() = std::unique(changed_net.begin(), changed_net.end());
+
     /// update blockage
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
         int master_id = cInsts[id].masterCell;
         int x = cInsts[id].position.x, y = cInsts[id].position.y;
         for (auto &b : mCells[master_id].blocks) {
-            Circuit[x][y][b.layerNum].demand -= b.demand;
-            Circuit[new_locs[i].x][new_locs[i].y][b.layerNum].demand += b.demand;
+            DataBase.incDemand({x, y, b.layerNum}, -b.demand);
+            DataBase.incDemand({new_locs[i].x, new_locs[i].y, b.layerNum}, b.demand);
         }
     }
 
     /// ripup these nets
-    for (auto &x : changed_net)
-        ripup(x);
+    for (auto &x : changed_net) {
+        DataBase.inc3DCon(Nets[x].segments, 1);
+        DataBase.inc2DCon(Nets[x].segments, 1);
+    }
+    
     /// reroute these nets
-    route_nets(changed_net);
-    return false;
+    if (!route_nets(changed_net)) {
+        for (auto &x : changed_net) {
+            DataBase.inc3DCon(Nets[x].segments, -1);
+            DataBase.inc2DCon(Nets[x].segments, -1);
+        }
+        return false;
+    }
+    return true;
 }
 
 void Solver::print_solution(std::ostream &os) {

@@ -71,13 +71,11 @@ RouteInfo Solver::init2d(int netid) {
  * @return int congestion
  */
 int Solver::get2DCon(Point st, Point en) {
-    if (st.x == en.x) {
-        /// Vertical
-        
-    } else {
-        /// Horizontal
+    return DataBase.query2DCon(Segment(st, en));
+}
 
-    }
+bool Solver::mazeRouting(Edge &twopin) {
+    return false;
 }
 
 bool Solver::route2pin2d(Edge &twopin) {
@@ -90,8 +88,10 @@ bool Solver::route2pin2d(Edge &twopin) {
     int hY = std::max(en.y, st.y);
 
     const double ratio = 1.5; /// increase the bounding box by a ratio
-    const int INF = 0x3f3f3f3f;
-
+    int midX = (lX + hX) / 2, wX = hX - lX;
+    int midY = (lY + hY) / 2, wY = hY - lY;
+    lX = midX - wX * ratio / 2, hX = midX + wX * ratio / 2;
+    lY = midY - wY * ratio / 2, hY = midY + wY * ratio / 2;
     int min_cost = INF, max_con = INF;
     std::vector<Segment> best_route;
 
@@ -138,7 +138,9 @@ bool Solver::route2pin2d(Edge &twopin) {
 
     if (min_cost == INF) {
         /// TODO call maze routing
-        return false;
+        if (!mazeRouting(twopin) )
+            return false;
+        return true;
     }
     twopin.segs = best_route;
     return true;
@@ -153,8 +155,7 @@ bool Solver::route2d(RouteInfo &info) {
 }
 
 int Solver::get3DCon(Point p) {
-    auto x = Circuit[p.x][p.y][p.z];
-    return x.supply - x.demand;
+    return DataBase.get3DCon(p);
 }
 
 /**
@@ -162,29 +163,7 @@ int Solver::get3DCon(Point p) {
  * @return minimum of {supply - demand} on the path
  */
 int Solver::get3DCon(Point st, Point en) {
-    int flagH = st.y != en.y;
-    int flagV = st.x != en.x;
-    int flagZ = st.z != en.z;
-    DEBUG(if (flagH + flagV + flagZ > 1) dbg_print_line("error"));
-    if (flagH) {
-        int minCon = INF;
-        for (int y = std::min(st.y, en.y); y <= std::max(st.y, en.y); ++y)
-            minCon = std::min(minCon, get3DCon(Point(st.x, y, st.z)));
-        return minCon;
-    } 
-    if (flagV) {
-        int minCon = INF;
-        for (int x = std::min(st.x, en.x); x <= std::max(st.x, en.x); ++x)
-            minCon = std::min(minCon, get3DCon(Point(x, st.y, st.z)));
-        return minCon;
-    }
-    if (flagZ) {
-        int minCon = INF;
-        for (int z = std::min(st.z, en.z); z <= std::max(st.z, en.z); ++z)
-            minCon = std::min(minCon, get3DCon(Point(st.x, st.y, z)));
-        return minCon;
-    }
-    return get3DCon(st);
+    return DataBase.query3DCon(Segment(st, en));
 }
 
 /**
@@ -259,13 +238,19 @@ void Solver::assign_layer_dp(Node &node, int min_layer) {
         /// leaf node
         assert(node.isPin);
         int px = node.x, py = node.y;
+        node.dp.cost.resize(numLayer + 1, F_INF);
+
         float cost = 0.0;
         for (int i = node.layer; i < numLayer; ++i) {
+            if (get3DCon({px, py, node.layer}, {px, py, i}) <= 0)
+                break;
             cost += Layers[i].powerFactor;
             node.dp.cost[i] = cost;
         }
         cost = 0.0;
         for (int i = node.layer; i >= 1; --i) {
+            if (get3DCon({px, py, node.layer}, {px, py, i}) <= 0)
+                break;
             cost += Layers[i].powerFactor;
             node.dp.cost[i] = cost;
         }
@@ -315,5 +300,8 @@ bool Solver::route3d(RouteInfo &info) {
             bestValue = root_node.dp.cost[l];
             bestLayer = l;
         }
+    if (bestLayer == 0)
+        return false;
     assign_layer_compute_seg(root_node, bestLayer, info.segs_3d);
+    return true;
 }
