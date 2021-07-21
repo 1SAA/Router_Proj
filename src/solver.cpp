@@ -114,7 +114,12 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     for (auto &x : problem.nets) {
         name2net[x.name] = i;
         auto &net = Nets[i];
-        net = Net(x.name, x.cntPin, x.minRoutingLayConstr, x.weight);
+        int minLayer;
+        if (x.minRoutingLayConstr == "NoCstr")
+            minLayer = 1;
+        else 
+            minLayer = name2layer[x.minRoutingLayConstr];
+        net = Net(x.name, x.cntPin, minLayer, x.weight);
         for (int j = 0, n = x.pins.size(); j < n; ++j) {
             int inst = name2inst[x.pins[j].instName];
             int master = cInsts[inst].masterCell;
