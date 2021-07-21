@@ -88,8 +88,8 @@ public:
  */
 struct NetInfo {
 public:
-    string name;
-    int cntPin, minRoutingLayConstr;
+    string name, minRoutingLayConstr;
+    int cntPin;
     float weight;
     vector<PinInfo> pins;
 };

@@ -31,6 +31,15 @@ public:
         os << "(" << p.x << ", " << p.y << ", " << p.z << ", " << ")";
         return os;
     }
+    friend bool operator < (const Point a, const Point b) {
+        if (a.x != b.x)
+            return a.x < b.x;
+        else if (a.y != b.y)
+            return a.y < b.y;
+        else if (a.z != b.z)
+            return a.z < b.z;
+        return false;
+    }
 };
 
 class Segment {

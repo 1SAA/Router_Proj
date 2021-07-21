@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include "parser.h"
+#include "movement.h"
 #include "solver.h"
 #include "utils.h"
 
@@ -17,8 +18,12 @@ int main(int argv, char *argc[]) {
 
     Parser::ProblemInfo problem;
     Parser::parse(input, problem);
-    Solver solver(problem);
+    Movement::init(problem);
+    dbg_print("Initialization is done.\n");
+    vector<Movement::OneMovement> ret = Movement::getMoveList();
+    dbg_print("The number of Movement %d\n", ret.size());
+/*    Solver solver(problem);
     solver.print();
     
-    solver.print_solution(output);
+    solver.print_solution(output);*/
 }
