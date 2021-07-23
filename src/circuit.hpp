@@ -50,12 +50,20 @@ public:
     bool isVertical() const {return spoint.x != epoint.x;}
     bool isHorizontal() const {return spoint.y != epoint.y;}
     bool isVia() const {return spoint.z != epoint.z;}
+
     Point min() const {
-        return Point(std::min(spoint.x, epoint.x), std::min(spoint.y, epoint.y), std::min(spoint.z, epoint.z));
+        return Point(std::min(spoint.x, epoint.x), std::min(spoint.y, epoint.y), 
+                     std::min(spoint.z, epoint.z));
     }
+
     Point max() const {
-        return Point(std::max(spoint.x, epoint.x), std::max(spoint.y, epoint.y), std::max(spoint.z, epoint.z));
+        return Point(std::max(spoint.x, epoint.x), std::max(spoint.y, epoint.y),
+                     std::max(spoint.z, epoint.z));
     }
+
+    /**
+     * @brief only consider intersections between segments of same direction
+     */
     static bool isIntersect(const Segment &a, const Segment &b) {
         if (a.isVertical() && b.isVertical()) {
             if (a.spoint.y != b.spoint.y || a.spoint.z != b.spoint.z)
@@ -84,6 +92,7 @@ public:
         }
         return false;
     }
+
     static Segment Merge(const Segment &a, const Segment &b) {
         assert(isIntersect(a, b));
         Point mina = a.min(), minb = b.min(), maxa = a.max(), maxb = b.max();
@@ -164,17 +173,43 @@ public:
 class Net {
 public:
     std::string name;
-    int pinCount, minConstraint;
-    float weight;
+    int pinCount, minConstraint, length;
+    float weight, cost;
     struct NetPin {
         int inst, pin, layer;
     };
     std::vector<NetPin> pins;
     std::vector<Segment> segments;
+    Point lp, rp; // bounding box boundary
+
+    void updateBox() {
+        lp.x = lp.y = lp.z = INF;
+        rp.x = rp.y = rp.z = 0;
+
+        for (auto &seg : segments) {
+            
+            lp.x = std::min(lp.x, std::min(seg.spoint.x, seg.epoint.x));
+            lp.y = std::min(lp.y, std::min(seg.spoint.y, seg.epoint.y));
+            lp.z = std::min(lp.z, std::min(seg.spoint.z, seg.epoint.z));
+
+            rp.x = std::max(rp.x, std::max(seg.spoint.x, seg.epoint.x));
+            rp.y = std::max(rp.y, std::max(seg.spoint.y, seg.epoint.y));
+            rp.z = std::max(rp.z, std::max(seg.spoint.z, seg.epoint.z));
+        }
+    }
+
+    void updateLength() {
+        length = 0;
+        for (auto &seg : segments) 
+            length += (seg.spoint - seg.epoint).norm1();
+    }
+
     Net() = default;
     Net(std::string n, int p, int m, float w): name(n), pinCount(p), minConstraint(m), weight(w) {
         pins.resize(p);
         segments.clear();
+        cost = 0.0;
+        length = 0;
     }
     NetPin & operator [] (const int &i) { return pins[i]; }
 };

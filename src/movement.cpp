@@ -1,7 +1,7 @@
 #include "circuit.hpp"
 #include "parser.h"
-#include "movement.h"
 #include "utils.h"
+#include "solver.h"
 #include <cmath>
 #include <algorithm>
 
@@ -11,10 +11,9 @@ using std::map;
 using std::min;
 using std::max;
 
-namespace Movement {
-
 const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 2, BETA = 30;
 
+/*
 int maxMove, numRow, numCol, numLay, numMas, numIns, numNet;
 int cntMove;
 
@@ -29,145 +28,9 @@ map<string, int> name2nl, name2mc, name2ci, name2VA, name2net;
 
 int leftSup[MAXLAYER][MAXBOUND][MAXBOUND];
 int vlabel[MAXBOUND][MAXBOUND];
-
-/**
- * @brief Initialize all data from input
- * 
- * @param problem 
- */
-void init(Parser::ProblemInfo &problem) {
-    
-    maxMove = problem.maxCellMove;
-    numRow = problem.gGridX;
-    numCol = problem.gGridY;
-    numLay = problem.numLayer;
-    numMas = problem.masters.size();
-    numIns = problem.insts.size();
-    numNet = problem.nets.size();
-
-    Layers.resize(numLay + 1);
-    for (auto layer : problem.layers) {
-        int idx = layer.idx;
-        Layers[idx] = Layer(layer.name, idx, layer.direction,
-                            layer.defSupply, layer.powerFactor);
-        name2nl[layer.name] = idx;
-    }
-
-/*
-    dbg_print("The number of layers: %d\n", numLay);
-    for (int i =  1; i <= numLay; i++) {
-        auto &layer = Layers[i];
-        dbg_print("Layer %d: %s %c sup: %d pow: %f\n", layer.idx, layer.name.c_str(),
-        layer.horv == 0 ? 'H' : 'V', layer.supply, layer.powerFactor);
-    }
 */
 
-    mCells.resize(numMas);
-    int cur = 0;
-    for (auto &mc : problem.masters) {
-        auto &curMC = mCells[cur];
-        name2mc[mc.name] = cur;
-        curMC = MasterCell(mc.name, mc.cntPin, mc.cntBlockage);
-        for (int i = 0; i < mc.pins.size(); i++) {
-            auto &p = mc.pins[i];
-            curMC.pins[i] = Pin(p.name, name2nl[p.layer]);
-            curMC.s2pin[p.name] = i;
-        }
-        for (int i = 0; i < mc.blockages.size(); i++) {
-            auto &b = mc.blockages[i];
-            curMC.blocks[i] = Blockage(b.name, name2nl[b.layer],
-                                       b.demand);
-            curMC.s2block[b.name] = i;
-        }
-        cur++;
-    }
-
-/*
-    dbg_print("The number of master cells: %d\n", numMas);
-    for (auto &mc : mCells) {
-        dbg_print("Master Cell %s pincount: %d blockage count %d\n", 
-        mc.name.c_str(), mc.pinCount, mc.blockageCount);
-        for (auto &pin : mc.pins) 
-            dbg_print("Pin %s %d\n", pin.name.c_str(), pin.layerNum);
-        for (auto &block : mc.blocks)
-            dbg_print("Block %s %d %d\n", block.name.c_str(), block.layerNum
-            , block.demand);
-    }
-*/
-
-    cInsts.resize(numIns);
-    cur = 0;
-    for (auto &ci : problem.insts) {
-        auto &inst = cInsts[cur];
-        inst = CellInst(ci.name, Point(ci.gX, ci.gY, 0), name2mc[ci.masterName],
-                        ci.moveConstr, 0);
-        name2ci[ci.name] = cur;
-        cur++;
-    }
-
-/*
-    dbg_print("The number of cell instances: %d\n", numIns);
-*/
-
-    memset(vlabel, 0, sizeof vlabel);
-    cur = 1;
-    VAreas.resize(problem.areas.size() + 1);
-    for (auto &x : problem.areas) {
-        auto &v = VAreas[cur];
-        name2VA[x.name] = cur;
-        v = VoltageArea();
-        for (auto &g : x.grids) {
-            v.area.push_back(Point(g.first, g.second, 0));
-            vlabel[g.first][g.second] = cur;
-        }
-        cur++;
-    }
-    for (auto &x : problem.areas) {
-        int idArea = name2VA[x.name];
-        for (auto &inst : x.instNames) {
-            int idInst = name2ci[inst];
-            VAreas[idArea].instList.push_back(idInst);
-            cInsts[idInst].voltageLabel = idArea;
-        }
-    }
-
-    cur = 0;
-    Nets.resize(problem.nets.size());
-    for (auto &n : problem.nets) {
-        name2net[n.name] = cur;
-        auto &net = Nets[cur];
-        int minLayer;
-        if (n.minRoutingLayConstr == "NoCstr")
-            minLayer = 1;
-        else 
-            minLayer = name2nl[n.minRoutingLayConstr];
-        net = Net(n.name, n.cntPin, minLayer, n.weight);
-        for (int i = 0; i < n.pins.size(); i++) {
-            int inst = name2ci[n.pins[i].instName];
-            int master = cInsts[inst].masterCell;
-            int pin = mCells[master].s2pin[n.pins[i].pinName];
-            net[i] = {inst, pin, mCells[master].pins[pin].layerNum};
-            cInsts[inst].NetIds.push_back(cur);
-        }
-        cur++;
-    }
-
-    for (auto &x : problem.routes) {
-        int netid = name2net[x.netName];
-        Nets[netid].segments.push_back(Segment(Point(x.sX, x.sY, x.sL), Point(x.eX, x.eY, x.eL)));
-    }
-
-    supPos.resize(problem.supplyGrids.size());
-    cur = 0;
-    for (auto &p : problem.supplyGrids) {
-        auto &ele = supPos[cur];
-        ele = NoneDefaultSupply(Point(p.gX, p.gY, p.layer), p.diff);
-        cur++;
-    }
-    
-}
-
-int getLength(Net &net) {
+int Solver::getLength(Net &net) {
     int sum = 0;
     map<Point, int> vis = {};
     for (auto &seg : net.segments) {
@@ -197,9 +60,9 @@ int getLength(Net &net) {
     return sum;
 }
 
-void getBoundingBox(Net &net, Point &l, Point &r) {
+void Solver::getBoundingBox(Net &net, Point &l, Point &r) {
 
-    l.x = l.y = l.z = max(numRow, max(numCol, numLay)) + 1;
+    l.x = l.y = l.z = max(numRow, max(numCol, numLayer)) + 1;
     r.x = r.y = r.z = 0;
 
     for (auto &seg : net.segments) {
@@ -214,8 +77,8 @@ void getBoundingBox(Net &net, Point &l, Point &r) {
     }
 }
 
-void get2DBound(Net &net, Point &l, Point &r, string n) {
-    l.x = l.y = max(numRow, max(numCol, numLay)) + 1;
+void Solver::get2DBound(Net &net, Point &l, Point &r, string n) {
+    l.x = l.y = max(numRow, max(numCol, numLayer)) + 1;
     r.x = r.y = 0;
     for (auto &np : net.pins) {
 
@@ -232,30 +95,30 @@ void get2DBound(Net &net, Point &l, Point &r, string n) {
     }
 }
 
-void addInst(CellInst &inst, int c) {
-    Point pos = inst.position;
+void Solver::addInst(CellInst &inst, Point pos, int c) {
     int master = inst.masterCell;
     for (auto &b : mCells[master].blocks) 
-        leftSup[b.layerNum][pos.x][pos.y] += c * b.demand;
+        //leftSup[b.layerNum][pos.x][pos.y] += c * b.demand;
+        DataBase.incDemand({pos.x, pos.y, b.layerNum}, c * b.demand);
     for (auto &p : mCells[master].pins)
-        leftSup[p.layerNum][pos.x][pos.y] += c * ALPHA;
+        //leftSup[p.layerNum][pos.x][pos.y] += c * ALPHA; 
+        DataBase.incDemand({pos.x, pos.y, p.layerNum}, c * ALPHA);
 }
 
-bool checkInst(CellInst &inst) {
-    Point pos = inst.position;
-    if (inst.voltageLabel && inst.voltageLabel != vlabel[pos.x][pos.y])
+bool Solver::checkInst(CellInst &inst, Point pos) {
+    if (inst.voltageLabel && inst.voltageLabel != DataBase.getVoltageLable(Point(pos.x, pos.y)))
         return false;
     int master = inst.masterCell;
     for (auto &b : mCells[master].blocks)
-        if (leftSup[b.layerNum][pos.x][pos.y] < b.demand) 
+        if (DataBase.get3DCon({pos.x, pos.y, b.layerNum}) < 0)
             return false;
     for (auto &p : mCells[master].pins)
-        if (leftSup[p.layerNum][pos.x][pos.y] < ALPHA)
+        if (DataBase.get3DCon({pos.x, pos.y, p.layerNum}) < 0)
             return false;
     return true;
 }
 
-void moveInst(CellInst &inst, Point &dest) {
+void Solver::moveInst(CellInst &inst, Point &dest) {
     int n = inst.NetIds.size(), m = n << 1, i = 0;
     int *buffX, *buffY, mx1, mx2, my1, my2;
     buffX = new int[m];
@@ -290,121 +153,122 @@ void moveInst(CellInst &inst, Point &dest) {
     delete [] buffY;
 }
 
-void findPosition(CellInst &inst, int posx, int posy) {
-    Point o = inst.position;
+Point Solver::findPosition(CellInst &inst, int posx, int posy) {
+//    inst.position = Point(posx, posy, 0);
+    if (checkInst(inst, Point(posx, posy))) 
+        return Point(posx, posy);
 
-    inst.position = Point(posx, posy, 0);
-    if (checkInst(inst)) 
-        return;
     for (int d = 1; d <= BETA; d++) {
         int i, j;
 
         i = posx - d; j = posy;
         for (int c = 0; c < d; c++, i++, j--)
             if (i >= 1 && i <= numRow && j >= 1 && j <= numCol) {
-                inst.position = Point(i, j, 0);
-                if (checkInst(inst))
-                    return;
+                if (checkInst(inst, Point(i, j)))
+                    return Point(i, j);
             }
         
         i = posx; j = posy - d;
         for (int c = 0; c < d; c++, i++, j++)
             if (i >= 1 && i <= numRow && j >= 1 && j <= numCol) {
-                inst.position = Point(i, j, 0);
-                if (checkInst(inst))
-                    return;
+                if (checkInst(inst, Point(i, j)))
+                    return Point(i, j);
             }
 
         i = posx + d; j = posy;
         for (int c = 0; c < d; c++, i--, j++)
             if (i >= 1 && i <= numRow && j >= 1 && j <= numCol) {
-                inst.position = Point(i, j, 0);
-                if (checkInst(inst))
-                    return;
+                if (checkInst(inst, Point(i, j)))
+                    return Point(i, j);
             }
         
         i = posx; j = posy + d;
         for (int c = 0; c < d; c++, i--, j--)
             if (i >= 1 && i <= numRow && j >= 1 && j <= numCol) {
-                inst.position = Point(i, j, 0);
-                if (checkInst(inst))
-                    return;
+                if (checkInst(inst, Point(i, j)))
+                    return Point(i, j);
             }
     }
-
-    inst.position = o;
+    return Point(inst.position.x, inst.position.y);
 }
 
-struct cmp {
-    vector<float> *w;
-    cmp(vector<float> *pw): w(pw) {}
-    bool operator () (const int &a, const int &b) {
-        float wa = w->at(a), wb = w->at(b);
-        return wa == wb ? a < b : wa > wb;
-    }
-};
 
-vector<OneMovement> getMoveList() {
-    
-    vector<int> id(numNet);
-    for (int i = 0; i < numNet; i++)
-        id[i] = i;
-    
-    vector<Point> lp(numNet), rp(numNet);
-    for (int i = 0; i < numNet; i++)
-        getBoundingBox(Nets[i], lp[i], rp[i]);
-
-    vector<float> w(numNet);
-    for (int i = 0; i < numNet; i++) {
-        auto &net = Nets[i];
-        int length = getLength(net), elen = 0;
-        elen += rp[i].x - lp[i].x;
-        elen += rp[i].y - lp[i].y;
-        elen += rp[i].z - lp[i].z;
-        w[i] = net.weight * (length - elen);
-/*
-        dbg_print("%d %d %d\n", lp[i].x, lp[i].y, lp[i].z);
-        dbg_print("%d %d %d\n", rp[i].x, rp[i].y, rp[i].z);
-        dbg_print("Expected length %d\n", elen);\
-        dbg_print("Weight %f\n", w[i]);
-*/
-    }
-
-    sort(id.begin(), id.end(), cmp(&w));
-
+std::pair<std::vector<int>, std::vector<Point> >
+Solver::getMoveList() {
 /*
     for (int i = 0; i < numNet; i++)
         dbg_print("rank %d: %d\n", i, id[i]);
 */
 
-
     /*
     TO DO: Initialize congestion weight
     */
-
-   for (int k = 1; k <= numLay; k++) {
+   /*
+   for (int k = 1; k <= numLayer; k++) {
        int defSup = Layers[k].supply;
        for (int i = 1; i <= numRow; i++)
         for (int j = 1; j <= numCol; j++)
             leftSup[k][i][j] = defSup;
 //        dbg_print("Default Supply %d\n", defSup);
    }
-
+   
     for (auto &d : supPos) {
         leftSup[d.position.z][d.position.x][d.position.y] += d.addition;
 //        dbg_print("Addition %d\n", d.addition);
     }
+    */
 
+    /*
     for (auto &inst : cInsts)
         addInst(inst, -1);
+    */
 
-    vector<int> lock(numIns);
+    /*
+    vector<int> lock(numInst);
     vector<OneMovement> ret;
-    for (int i = 0; i < numIns; i++) {
+    for (int i = 0; i < numInst; i++) {
         auto &inst = cInsts[i];
         if (!inst.movable)
             lock[i] = 1;   
     }
+    */
+
+    std::vector<int> movedInst;
+    std::vector<Point> locations;
+
+    int netid = *NetHeap.begin();
+
+    for (auto &p : Nets[netid].pins) {
+        if (Lock[p.inst])
+            continue;
+        auto inst = cInsts[p.inst];
+        if (inst.movable == 0)        
+            continue;
+        movedInst.push_back(p.inst);
+        Lock[p.inst] = 1;
+    }
+
+    for (auto idx : movedInst)
+        incBlockage(cInsts[idx], cInsts[idx].position, -1);
+
+    for (auto idx : movedInst) {
+        Point t;
+        auto &inst = cInsts[idx];
+        moveInst(inst, t);
+        t = findPosition(inst, t.x, t.y);
+        addInst(inst, t, 1);
+        locations.push_back(t);
+    }
+    
+    for (unsigned i = 0; i < movedInst.size(); ++i) 
+        addInst(cInsts[movedInst[i]], locations[i], -1);
+
+    for (auto idx : movedInst)
+        incBlockage(cInsts[idx], cInsts[idx].position, 1);
+
+    return std::make_pair(movedInst, locations);
+
+    /*
     for (int i = 0; i < numNet; i++) {
 
         //dbg_print("Net number %d\n", i);
@@ -421,22 +285,25 @@ vector<OneMovement> getMoveList() {
             //dbg_print("Destination found\n");
             //dbg_print("%d %d\n", t.x, t.y);
             findPosition(inst, t.x, t.y);
-            //dbg_print("Placement location found\n");
-            addInst(inst, -1);
+            //dbgaddInst_print("Placement location found\n");
+            (inst, -1);
             if (inst.position == o)
                 continue;
             lock[p.inst] = 1;
             ret.push_back(OneMovement(inst.name, inst.position));
             if (!inst.movedFlag)
-                cntMove++;
+                cntCellMove++;
             inst.movedFlag = 1;
         }
     }
+    */
 
-    for (auto &o : ret) 
-        dbg_print("Inst %s: %d %d\n", o.cellName.c_str(), o.dest.x, o.dest.y);
+    for (unsigned i = 0; i < movedInst.size(); ++i) {
+        int idx = movedInst[i];
+        dbg_print("Moved inst %d: ", movedInst[i]);
+        dbg_print("(%d, %d) --> ", cInsts[idx].position.x, cInsts[idx].position.y);
+        dbg_print("(%d, %d)\n", locations[i].x, locations[i].y);
+    }
 
-    return ret;
-}
-
+    return std::make_pair(movedInst, locations);
 }

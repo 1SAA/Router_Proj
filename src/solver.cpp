@@ -17,7 +17,17 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     numMaster = problem.masters.size();
     numInst = problem.insts.size();
     numNet = problem.nets.size();
+    totalCost = 0.0;
+
+    comparator = [this](int a, int b) {
+        auto na = Nets[a], nb = Nets[b];
+        float wa = na.weight * (na.length - (na.rp - na.lp).norm1());
+        float wb = nb.weight * (nb.length - (nb.rp - nb.lp).norm1());
+        return wa == wb ? a < b : wa < wb;
+    }; 
     
+    Lock.resize(numInst, 0);
+    NetHeap = std::set<int, decltype(comparator)>(comparator);
 
     std::map<std::string, int> name2layer;
     std::map<std::string, int> name2master;
@@ -108,28 +118,30 @@ Solver::Solver(Parser::ProblemInfo &problem) {
         DataBase.getSupply({p.gX, p.gY, p.layer}) += p.diff;
 
     // Blockages
-    for (auto &c : cInsts) {
-        auto m = mCells[c.masterCell];
-        for (auto &b : m.blocks) 
-            DataBase.incDemand({c.position.x, c.position.y, b.layerNum}, b.demand);
-    }
+    for (auto &c : cInsts) 
+        incBlockage(c, c.position, 1);
 
     /// Nets and Segments
     i = 0;
     Nets.resize(problem.nets.size());
     for (auto &x : problem.nets) {
         name2net[x.name] = i;
+
         auto &net = Nets[i];
+
         int minLayer;
+
         if (x.minRoutingLayConstr == "NoCstr")
             minLayer = 1;
         else 
             minLayer = name2layer[x.minRoutingLayConstr];
+
         net = Net(x.name, x.cntPin, minLayer, x.weight);
         for (int j = 0, n = x.pins.size(); j < n; ++j) {
             int inst = name2inst[x.pins[j].instName];
             int master = cInsts[inst].masterCell;
             int pin = mCells[master].s2pin[x.pins[j].pinName];
+
             net[j] = {inst, pin, mCells[master].pins[pin].layerNum};
             cInsts[inst].NetIds.push_back(i);
         }
@@ -140,10 +152,55 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     for (auto &x : problem.routes) {
         int netid = name2net[x.netName];
         Nets[netid].segments.push_back(Segment(Point(x.sX, x.sY, x.sL), Point(x.eX, x.eY, x.eL)));
-        canonicalize(Nets[netid].segments);
         DataBase.inc3DCon(Nets[netid].segments, 1);
     }
+
+    for (auto &net : Nets) {
+        canonicalize(net.segments);
+        net.updateBox();
+        net.updateLength();
+        net.cost = calcCost(net.segments) * net.weight;
+        totalCost += net.cost;
+    }
+
+    for (int i = 0; i < numNet; ++i)
+        NetHeap.insert(i);
+
     DataBase.get2DFrom3D();
+}
+
+void Solver::incBlockage(CellInst &inst, Point p, int sgn) {
+    auto m = mCells[inst.masterCell];
+    for (auto b : m.blocks)
+        DataBase.incDemand({p.x, p.y, b.layerNum}, sgn * b.demand);
+}
+
+float Solver::calcCost(std::vector<Segment> &segs) {
+    float cost = 0.0;
+    for (auto seg : segs) {
+        if (seg.isVertical() || seg.isHorizontal()) 
+            cost += (seg.spoint - seg.epoint).norm1() * Layers[seg.spoint.z].powerFactor;
+        else {
+            int minz = seg.min().z, maxz = seg.max().z;
+            for (int i = minz; i <= maxz; ++i) {
+                bool intersect = false;
+                for (unsigned j = 0, n = segs.size(); j < n; ++j)
+                    if (!segs[j].isVertical()) {
+                        if (segs[j].spoint.z == i && 
+                            segs[j].min().x <= seg.spoint.x && segs[j].max().x >= seg.spoint.x &&
+                            segs[j].min().y <= seg.spoint.y && segs[j].max().y >= seg.spoint.y) 
+                        {
+                            intersect = true;
+                            break;
+                        }
+                    }
+                if (intersect == true)
+                    continue;
+                cost += Layers[i].powerFactor;
+            }
+        }
+    }
+    return cost;
 }
 
 /**
@@ -177,19 +234,6 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
         segList.erase(++iter);
         route_seg.push_back(curSeg);
     }
-}
-
-static void explore(Tree &t) {
-    dbg_print("print Steiner Tree\n");
-    dbg_print("====================\n");
-    int num_vertex = sizeof(t.branch);
-    for (int i = 0; i < num_vertex; ++i) {
-        if (i != t.branch[i].n)
-            dbg_print("%d --> %d\n", i, t.branch[i].n);
-        else
-            dbg_print("root: %d\n", i);
-    }
-    dbg_print("=====================\n");
 }
 
 /**
@@ -247,6 +291,8 @@ bool Solver::route_nets(std::vector<int> &ids) {
 bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<Point> &new_locs) {
     /// find nets that are affected
     std::vector<int> changed_net;
+    std::vector<Point> old_location;
+
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
         if (cInsts[id].position == new_locs[i])
@@ -262,32 +308,73 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
     std::sort(changed_net.begin(), changed_net.end());
     changed_net.end() = std::unique(changed_net.begin(), changed_net.end());
 
+    /// erase from net heap
+    for (auto idx : changed_net)
+        NetHeap.erase(idx);
+
     /// update blockage
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
-        int master_id = cInsts[id].masterCell;
         int x = cInsts[id].position.x, y = cInsts[id].position.y;
-        for (auto &b : mCells[master_id].blocks) {
-            DataBase.incDemand({x, y, b.layerNum}, -b.demand);
-            DataBase.incDemand({new_locs[i].x, new_locs[i].y, b.layerNum}, b.demand);
-        }
+
+        incBlockage(cInsts[id], Point(x, y) , -1);
+        incBlockage(cInsts[id], Point(new_locs[i].x, new_locs[i].y), 1);
+        old_location.push_back(cInsts[id].position);
+        cInsts[id].position = new_locs[i];
     }
 
     /// ripup these nets
     for (auto &x : changed_net) {
         DataBase.inc3DCon(Nets[x].segments, 1);
         DataBase.inc2DCon(Nets[x].segments, 1);
+        totalCost -= Nets[x].cost;
     }
     
-    /// reroute these nets
-    if (!route_nets(changed_net)) {
+    bool flag = route_nets(changed_net);
+
+    /// recover
+    for (auto idx : changed_net)
+        NetHeap.insert(idx);
+
+    if (!flag) {
+        for (unsigned i = 0, n = insts.size(); i < n; ++i) {
+            int id = insts[i];
+            int x = cInsts[id].position.x, y = cInsts[id].position.y;
+            incBlockage(cInsts[id], Point(x, y) , -1);
+            incBlockage(cInsts[id], Point(old_location[i].x, old_location[i].y), 1);
+            cInsts[id].position = old_location[i];
+        }
         for (auto &x : changed_net) {
             DataBase.inc3DCon(Nets[x].segments, -1);
             DataBase.inc2DCon(Nets[x].segments, -1);
+            totalCost += Nets[x].cost;
         }
         return false;
+    } 
+
+    // update stats
+    for (auto &x : changed_net) {
+        Nets[x].updateBox();
+        Nets[x].updateLength();
+        Nets[x].cost = calcCost(Nets[x].segments) * Nets[x].weight;
+        totalCost += Nets[x].cost;
     }
+
     return true;
+}
+
+void Solver::run() {
+    fprintf(stderr, "Original Cost: %f\n", totalCost);
+    
+    auto insts = getMoveList();
+    bool flag = route_after_move(insts.first, insts.second);
+
+    if (flag == false)
+        printf("Reroute failed");
+    else
+        printf("Reroute succeeded");
+
+    fprintf(stderr, "Cost after movement and reroute: %f\n", totalCost);
 }
 
 void Solver::print_solution(std::ostream &os) {

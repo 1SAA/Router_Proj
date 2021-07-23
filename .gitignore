@@ -1,6 +1,7 @@
 # Binary Directory
 build/
 data/
+.vscode 
 
 # Prerequisites
 *.d

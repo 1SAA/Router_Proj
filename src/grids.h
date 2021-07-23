@@ -78,7 +78,7 @@ public:
         }
     };
 private:
-    std::vector<std::vector<Con2D> > Congestion2D; // first for H, second for V
+    std::vector<std::vector<Con2D> > Congestion2D; // first for H(0), second for V(1)
     std::vector<std::vector<Con3D> > Congestion3D;
     std::vector<std::vector<int> > VoltageLable;
     
@@ -106,6 +106,12 @@ public:
                     else
                         Congestion2D[i][j].second += Congestion3D[i][j][k];
             }
+    }
+
+    int get2DCon(const Point &p, int flag) const {
+        if (flag == 0)
+            return Congestion2D[p.x][p.y].first;
+        return Congestion2D[p.x][p.y].second;
     }
 
     int query2DCon(const Point &p, bool HorV) const {
@@ -232,12 +238,12 @@ public:
             if (seg.isVertical()) {
                 int minx = seg.min().x, maxx = seg.max().x;
                 for (int i = minx; i <= maxx; ++i) 
-                    Congestion3D[i][seg.spoint.y].demand(seg.spoint.z) += d;
+                    Congestion3D[i][seg.spoint.y].demand(seg.spoint.z) -= d;
 
             } else if (seg.isHorizontal()) {
                 int miny = seg.min().y, maxy = seg.max().y;
                 for (int i = miny; i <= maxy; ++i) 
-                    Congestion3D[seg.spoint.x][i].demand(seg.spoint.z) += d;
+                    Congestion3D[seg.spoint.x][i].demand(seg.spoint.z) -= d;
 
             } else if (seg.isVia()) {
                 int minz = seg.min().z, maxz = seg.max().z;
@@ -255,7 +261,7 @@ public:
                         }
                     if (intersect == true)
                         continue;
-                    Congestion3D[seg.spoint.x][seg.spoint.y].demand(i) += 1;
+                    Congestion3D[seg.spoint.x][seg.spoint.y].demand(i) -= d;
                 }
             }
         }

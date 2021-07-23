@@ -18,12 +18,14 @@ int main(int argv, char *argc[]) {
 
     Parser::ProblemInfo problem;
     Parser::parse(input, problem);
+    /*
     Movement::init(problem);
     dbg_print("Initialization is done.\n");
     vector<Movement::OneMovement> ret = Movement::getMoveList();
     dbg_print("The number of Movement %d\n", ret.size());
-/*    Solver solver(problem);
-    solver.print();
-    
-    solver.print_solution(output);*/
+    */
+
+    Solver solver(problem);
+    solver.run();    
+    solver.print_solution(output);
 }

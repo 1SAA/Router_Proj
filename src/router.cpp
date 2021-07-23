@@ -1,4 +1,7 @@
 #include <map>
+#include <queue>
+#include <algorithm>
+
 #include "solver.h"
 #include "flute.h"
 #include "utils.h"
@@ -75,7 +78,71 @@ int Solver::get2DCon(Point st, Point en) {
 }
 
 bool Solver::mazeRouting(Edge &twopin) {
-    return false;
+    int dir[4][2] = {{0, 1}, {1, 0}, {0, -1}, {-1, 0}}; // 0, 2 Horizontal 1, 4 Vertical
+    std::vector<std::vector<int> > Dist(numRow + 1, std::vector<int>(numCol + 1, -1));
+    std::deque<std::pair<int, int> > Q;
+
+    auto &st = twopin.child, &en = twopin.parent;
+    auto calc_dist = [&] (int x, int y) {
+        return std::abs(x - en.x) + std::abs(y - en.y);
+    };
+
+    Q.push_back(std::make_pair(st.x, st.y));
+    Dist[st.x][st.y] = 0;
+
+    while (!Q.empty()) {
+        auto now = Q.front();
+        Q.pop_front();
+        if (now.first == en.x && now.second == en.y)
+            break;
+        for (int d = 0; d < 4; ++d) {
+            int nx = now.first + dir[d][0], ny = now.second + dir[d][0];
+            if (nx <= 0 || nx > numRow || ny <= 0 || ny > numCol)
+                continue;
+            if (Dist[nx][ny] != -1)
+                continue;
+            if (DataBase.get2DCon(Point(nx, ny), d & 1) <= 0 ||
+                DataBase.get2DCon(Point(now.first, now.second), d & 1) <= 0)
+                continue;
+            Dist[nx][ny] = Dist[now.first][now.first] + 1;
+            if (calc_dist(nx, ny) < calc_dist(st.x, st.y))
+                Q.push_front(std::make_pair(nx, ny));
+            else
+                Q.push_back(std::make_pair(nx, ny)); // detour
+        }
+    }
+    
+    if (Dist[en.x][en.y] == -1)
+        return false;
+
+    int nowx = en.x, nowy = en.y;
+    int lastx = en.x, lasty = en.y;
+    int lastHV = -1;
+
+    while (nowx != st.x && nowy != st.y) {
+        for (int d = 0; d < 4; ++d) {
+            int nx = nowx + dir[d][0], ny = nowy + dir[d][1];
+            if (nx <= 0 || nx > numRow || ny <= 0 || ny > numCol)
+                continue;
+            if (DataBase.get2DCon(Point(nx, ny), d & 1) <= 0 ||
+                DataBase.get2DCon(Point(nowx, nowy), d & 1) <= 0)
+                continue;
+            if (Dist[nx][ny] + 1 != Dist[nowx][nowy])
+                continue;
+
+            if (lastHV != (d & 1)) {
+                twopin.segs.push_back(Segment(Point(nowx, nowy), Point(lastx, lasty)));
+                lastx = nowx, lasty = nowy;
+            }
+            
+            nowx = nx, nowy = ny;
+            lastHV = d & 1;
+            break;
+        }
+    }
+    twopin.segs.push_back(Segment(Point(st.x, st.y), Point(lastx, lasty)));
+    std::reverse(twopin.segs.begin(), twopin.segs.end());
+    return true;
 }
 
 bool Solver::route2pin2d(Edge &twopin) {
@@ -103,6 +170,7 @@ bool Solver::route2pin2d(Edge &twopin) {
 
             int cost = std::abs(bx - st.x) + std::abs(bx - en.x) + 
                        std::abs(by - st.y) + std::abs(by - en.y); /// TODO retouch this cost function
+            
             /// check 2D congestion
             int route1_con = std::min(get2DCon(Point(st.x, st.y), Point(st.x, by)), get2DCon(Point(st.x, by), Point(bx, by)));
             int route2_con = std::min(get2DCon(Point(st.x, st.y), Point(bx, st.y)), get2DCon(Point(bx, st.y), Point(bx, by)));
@@ -203,9 +271,15 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
                     prev_value = edge.child.dp.cost[k];
                 else
                     prev_value = edge.dp_segs[i - 1].cost[k];
-                float Zdist = h < k ? powerPrefixSum[k - 1] - powerPrefixSum[h - 1] : powerPrefixSum[h] - powerPrefixSum[k];
+
+                float Zdist = h < k ? 
+                              powerPrefixSum[k - 1] - powerPrefixSum[h - 1] : 
+                              powerPrefixSum[h] - powerPrefixSum[k];
+
                 float HVdist = (Point(st.x, st.y, k) - Point(en.x, en.y, k)).norm1() * Layers[k].powerFactor;
+
                 float total_value = Zdist + HVdist + prev_value;
+
                 if (total_value < edge.dp_segs[i].cost[h]) {
                     edge.dp_segs[i].cost[h] = total_value;
                     edge.dp_segs[i].prev[h] = k;
@@ -242,14 +316,14 @@ void Solver::assign_layer_dp(Node &node, int min_layer) {
 
         float cost = 0.0;
         for (int i = node.layer; i < numLayer; ++i) {
-            if (get3DCon({px, py, node.layer}, {px, py, i}) <= 0)
+            if (get3DCon({px, py, i}) <= 0)
                 break;
             cost += Layers[i].powerFactor;
             node.dp.cost[i] = cost;
         }
         cost = 0.0;
         for (int i = node.layer; i >= 1; --i) {
-            if (get3DCon({px, py, node.layer}, {px, py, i}) <= 0)
+            if (get3DCon({px, py, i}) <= 0)
                 break;
             cost += Layers[i].powerFactor;
             node.dp.cost[i] = cost;
@@ -282,7 +356,11 @@ int Solver::assign_layer_for_edge(Edge &edge, int startLayer, std::vector<Segmen
  * @return void
  */
 void Solver::assign_layer_compute_seg(Node &node, int curLayer, std::vector<Segment> &segs_3d) {
-    node.layer = curLayer;
+    if (node.isPin)
+        segs_3d.push_back(Segment({node.x, node.y, curLayer}, {node.x, node.y, node.layer}));
+    else
+        node.layer = curLayer;
+
     for (auto &edge :node.neighbor) {
         int nextLayer = assign_layer_for_edge(edge, curLayer, segs_3d);
         assign_layer_compute_seg(edge.child, nextLayer, segs_3d);
