@@ -13,23 +13,6 @@ using std::max;
 
 const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 2, BETA = 30;
 
-/*
-int maxMove, numRow, numCol, numLay, numMas, numIns, numNet;
-int cntMove;
-
-vector<Layer> Layers;
-vector<MasterCell> mCells;
-vector<CellInst> cInsts;
-vector<Net> Nets;
-vector<VoltageArea> VAreas;
-vector<NoneDefaultSupply> supPos;
-
-map<string, int> name2nl, name2mc, name2ci, name2VA, name2net;
-
-int leftSup[MAXLAYER][MAXBOUND][MAXBOUND];
-int vlabel[MAXBOUND][MAXBOUND];
-*/
-
 int Solver::getLength(Net &net) {
     int sum = 0;
     map<Point, int> vis = {};
@@ -195,7 +178,6 @@ Point Solver::findPosition(CellInst &inst, int posx, int posy) {
 
 std::pair<std::vector<int>, std::vector<Point> >
 Solver::getMoveList() {
-    dbg_print_line("\n");
     std::vector<int> movedInst;
     std::vector<Point> locations;
 
@@ -229,13 +211,17 @@ Solver::getMoveList() {
     for (auto idx : movedInst)
         incBlockage(cInsts[idx], cInsts[idx].position, 1);
 
+    dbg_print("----------------------------\n");
     for (unsigned i = 0; i < movedInst.size(); ++i) {
         int idx = movedInst[i];
         dbg_print("Moved inst %s: ", cInsts[idx].name.c_str());
         dbg_print("(%d, %d) --> ", cInsts[idx].position.x, cInsts[idx].position.y);
         dbg_print("(%d, %d)\n", locations[i].x, locations[i].y);
     }
+    dbg_print("-----------------------------\n");
+    
+    for (auto idx : movedInst)
+        Lock[idx] = 0;
 
-    dbg_print_line("\n");
     return std::make_pair(movedInst, locations);
 }

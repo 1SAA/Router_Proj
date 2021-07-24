@@ -12,12 +12,20 @@ struct STtree {
 public:
     int root;
     std::vector<Node> nodes;  
+    STtree() {
+        root = 0;
+        nodes.clear();
+    }
 };
 
 struct DPInfo {
 public:
     std::vector<float> cost; /// dp value
     std::vector<int> prev; /// dp flag array
+    DPInfo() {
+        cost.clear();
+        prev.clear();
+    }
 };
 
 class Edge {
@@ -38,6 +46,12 @@ public:
     std::vector<Edge> neighbor;
     std::vector<int> layers;
     std::vector<std::vector<float> > intv_cost;
+    Node() {
+        hasPin = 0;
+        neighbor.clear();
+        layers.clear();
+        intv_cost.clear();
+    }
 };
 
 class RouteInfo {
@@ -46,6 +60,12 @@ public:
     STtree tree;
     std::vector<Edge*> edges;
     std::vector<Segment> segs_3d;
+    RouteInfo() {
+        netid = -1;
+        edges.clear();
+        segs_3d.clear();
+    }
+
 };
 
 #endif

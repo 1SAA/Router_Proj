@@ -4,6 +4,7 @@
 #include <iostream>
 #include <algorithm>
 #include <list>
+#include <cmath>
 #include "solver.h"
 
 /**
@@ -288,7 +289,8 @@ bool Solver::route_nets(std::vector<int> &ids) {
     }
     for (auto &info : r2d)
         Nets[info.netid].segments = info.segs_3d;
-    return false;
+
+    return true;
 }
 
 /**
@@ -306,16 +308,26 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
         int id = insts[i];
         if (cInsts[id].position == new_locs[i])
             continue;
-        if (cInsts[id].movedFlag == 0) {
-            cInsts[id].movedFlag = 1;
-            cntCellMove++;
-        }
         for (auto &net_id : cInsts[id].NetIds) 
             changed_net.push_back(net_id);
     }
 
     std::sort(changed_net.begin(), changed_net.end());
-    changed_net.end() = std::unique(changed_net.begin(), changed_net.end());
+    auto iter = std::unique(changed_net.begin(), changed_net.end());
+    changed_net.resize(std::distance(changed_net.begin(), iter));
+
+    /// backup original stats
+    backup(insts, changed_net);
+
+    for (int i = 0, n = insts.size(); i < n; ++i) {
+        int id = insts[i];
+        if (cInsts[id].position == new_locs[i])    
+            continue;
+        if (cInsts[id].movedFlag == 0) {
+            cInsts[id].movedFlag = 1;
+            cntCellMove++;
+        }
+    }
 
     /// erase from net heap
     for (auto idx : changed_net)
@@ -340,12 +352,14 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
     }
     
     bool flag = route_nets(changed_net);
-
     /// recover
     for (auto idx : changed_net)
         NetHeap.insert(idx);
 
     if (!flag) {
+        recover();
+        return false;
+
         for (unsigned i = 0, n = insts.size(); i < n; ++i) {
             int id = insts[i];
             int x = cInsts[id].position.x, y = cInsts[id].position.y;
@@ -372,16 +386,92 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
     return true;
 }
 
+void Solver::backup(const std::vector<int> &insts, const std::vector<int> &nets) {
+    backup_nets.clear();
+    backup_insts.clear();
+    backup_instids = insts;
+    backup_netids = nets;
+
+    for (auto idx : insts)
+        backup_insts.push_back(cInsts[idx]);
+    for (auto idx : nets)
+        backup_nets.push_back(Nets[idx]);
+}
+
+void Solver::recover() {
+
+    for (int i = 0, n = backup_netids.size(); i < n; ++i)
+        NetHeap.erase(backup_netids[i]);
+
+    for (int i = 0, n = backup_netids.size(); i < n; ++i) {
+        int idx = backup_netids[i];
+        auto &net = backup_nets[i];
+
+        DataBase.inc3DCon(Nets[idx].segments, 1);
+        DataBase.inc2DCon(Nets[idx].segments, 1);
+        DataBase.inc3DCon(net.segments, -1);
+        DataBase.inc2DCon(net.segments, -1);
+
+        totalCost += net.cost - Nets[idx].cost;
+        Nets[idx] = net;
+
+        NetHeap.insert(idx);
+    }
+    
+    for (int i = 0, n = backup_insts.size(); i < n; ++i) {
+        int idx = backup_instids[i];
+        auto &inst = backup_insts[i];
+
+        incBlockage(inst, cInsts[idx].position, -1);
+        incBlockage(inst, inst.position, 1);
+
+        if (cInsts[idx].movedFlag == 1 && inst.movedFlag == 0) 
+            cntCellMove--;
+
+        cInsts[idx] = inst;
+    }
+}
+
 void Solver::run() {
     dbg_print("Original Cost: %f\n", totalCost);
-    
-    auto insts = getMoveList();
-    bool flag = route_after_move(insts.first, insts.second);
 
-    if (flag == false)
-        dbg_print("Reroute failed\n");
-    else
-        dbg_print("Reroute succeeded\n");
+    /// simulated annealing
+    int max_step = 10;
+    float original_temp = sqrt(totalCost);
+
+    for (int i = 0; i < max_step; ++i) {
+        if (cntCellMove >= maxCellMove)
+            break;
+        if (NetHeap.empty())
+            break;
+
+        float T = original_temp * (1.0 - (float) i / max_step);
+
+        float cost_before = totalCost;
+
+        auto insts = getMoveList();
+        bool flag = route_after_move(insts.first, insts.second);
+
+        if (flag == false) {
+            /// prevent routing the same net in the next time and get no solution
+            backup_heap.push_back(*NetHeap.begin());
+            NetHeap.erase(NetHeap.begin());
+            continue;
+        }
+
+        /// push the index erased before into net heap
+        for (auto idx : backup_heap)
+            NetHeap.insert(idx);
+        backup_heap.clear();
+
+        float cost_after = totalCost;
+
+        if (cost_after > cost_before) {
+            float p = exp((cost_before - cost_after) / T);
+            if (p < ((double) rand() / RAND_MAX))
+                recover();
+        }
+    }
 
     dbg_print("Cost after movement and reroute: %f\n", totalCost);
 }

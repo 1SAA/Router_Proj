@@ -40,7 +40,7 @@ public:
      * @param i in [1, numLayers)
      */
     Congestion & operator [] (int i) {
-        DEBUG(if (i <= 0 || i >= numLayers) dbg_print("invalid argument i: %d\n", i));
+        DEBUG(if (i <= 0 || i >= numLayers) dbg_print_line("invalid argument i: %d\n", i));
         return layerCon[i];
     }
 };
@@ -65,15 +65,15 @@ public:
             Demand.resize(NumLayer, 0);
         }
         int &demand(int i) { 
-            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print("invalid argument i: %d\n", i));
+            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print_line("invalid argument i: %d\n", i));
             return Demand[i]; 
         }
         int &supply(int i) {
-            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print("invalid argument i: %d\n", i));
+            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print_line("invalid argument i: %d\n", i));
             return Supply[i]; 
         }
         int operator [] (const int &i) const {
-            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print("invalid argument i: %d\n", i));
+            DEBUG(if (i <= 0 || i >= NumLayer) dbg_print_line("invalid argument i: %d\n", i));
             return Supply[i] - Demand[i];
         }
     };

@@ -32,6 +32,12 @@ private:
     std::vector<VoltageArea> VAreas; /// voltage areas
     std::vector<int> Lock;
 
+    std::vector<int> backup_heap;
+    std::vector<Net> backup_nets;
+    std::vector<int> backup_netids;
+    std::vector<CellInst> backup_insts;
+    std::vector<int> backup_instids;
+
     std::function<bool(int, int)> comparator;
 
     std::set<int, decltype(comparator)> NetHeap; ///
@@ -90,6 +96,10 @@ private:
     float calcCost(std::vector<Segment> &segs);
 
     void printNet(Net &net);
+    
+    void recover();
+
+    void backup(const std::vector<int> &insts, const std::vector<int> &nets);
 public:
     void run();
 

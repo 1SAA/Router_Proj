@@ -14,7 +14,6 @@
  */
 RouteInfo Solver::init2d(int netid) {
     Net &net = Nets[netid];
-    printNet(net);
     int deg = net.pins.size();
     int *xs = new DTYPE [deg];
     int *ys = new DTYPE [deg];
@@ -29,16 +28,14 @@ RouteInfo Solver::init2d(int netid) {
 
     const int FLUTE_ACC = 3;
     Tree t = flute(deg, xs, ys, FLUTE_ACC);
-    printtree(t);
-    int treeSize = t.deg * 2 - 2;
 
     RouteInfo info;
     info.netid = netid;
+    
     std::map<std::pair<int, int>, int> coord2id;
-
     int size = 0;
 
-    for (int i = 0; i < treeSize; ++i) {
+    for (int i = 0; i < t.deg * 2 - 2; ++i) {
         std::pair<int, int> pos[2];
         pos[0] = std::make_pair(t.branch[i].x, t.branch[i].y);
         pos[1] = std::make_pair(t.branch[t.branch[i].n].x, t.branch[t.branch[i].n].y);
@@ -48,11 +45,17 @@ RouteInfo Solver::init2d(int netid) {
                 coord2id[pos[j]] = size;
 
                 info.tree.nodes.push_back(Node());
-                auto node = info.tree.nodes.back();
+                auto &node = info.tree.nodes.back();
 
                 node.id = size;        
-                node.layers.resize(coord2pin[pos[j]].size(), 0);
-                node.hasPin = node.layers.size() > 0;
+                
+                if (coord2pin.find(pos[j]) != coord2pin.end()) {
+                    auto &pins = coord2pin[pos[j]];
+                    node.hasPin = 1;
+                    for (auto idx : pins) 
+                        node.layers.push_back(net.pins[idx].layer);
+                }
+
                 node.x = pos[j].first, node.y = pos[j].second;
 
                 size++;        
@@ -68,6 +71,7 @@ RouteInfo Solver::init2d(int netid) {
                 std::vector<Segment>(),
                 std::vector<DPInfo>()
             ));
+            info.edges.push_back(&info.tree.nodes[parent_id].neighbor.back());
         } else {
             info.tree.root = coord2id[pos[0]];
         }
@@ -171,7 +175,6 @@ bool Solver::route2pin2d(Edge &twopin) {
 
     lX = std::max((int)floor(midX - wX * ratio / 2), 1), hX = std::min((int)ceil(midX + wX * ratio / 2), numRow);
     lY = std::max((int)floor(midY - wY * ratio / 2), 1), hY = std::min((int)ceil(midY + wY * ratio / 2), numCol);
-    dbg_print("%d %d %d %d\n", lX, hX, lY, hY);
 
     int min_cost = INF, max_con = INF;
     std::vector<Segment> best_route;
@@ -204,6 +207,7 @@ bool Solver::route2pin2d(Edge &twopin) {
                 cur.push_back(Segment(Point(st.x, st.y), Point(bx, st.y)));
                 cur.push_back(Segment(Point(bx, st.y), Point(bx, by)));
             }
+
             if (route3_con > route4_con) {
                 cur.push_back(Segment(Point(bx, by), Point(en.x, by)));
                 cur.push_back(Segment(Point(en.x, by), Point(en.x, en.y)));
@@ -257,21 +261,34 @@ int Solver::get3DCon(Point st, Point en) {
  */
 void Solver::edge_dp(Edge &edge, int min_layer) {
     edge.dp_segs.resize(edge.segs.size());
-    int i = 0;
-    for (auto &seg : edge.segs) {
-        Point &st = seg.spoint, &en = seg.epoint;
-        edge.dp_segs[i].cost.resize(numLayer + 1);
-        edge.dp_segs[i].prev.resize(numLayer + 1);
 
+    for (int i = 0, n = edge.segs.size(); i < n; ++i) {
+        auto &seg = edge.segs[i];
+        Point &st = seg.spoint, &en = seg.epoint;
+        edge.dp_segs[i].cost.resize(numLayer + 1, F_INF);
+        edge.dp_segs[i].prev.resize(numLayer + 1, 0);
+        
+        if (st == en) {
+            if (i > 0)
+                edge.dp_segs[i].cost = edge.dp_segs[i - 1].cost;
+            else
+                edge.dp_segs[i].cost = edge.child.dp.cost;
+
+            for (int j = 1; j <= numLayer; ++j) 
+                edge.dp_segs[i].prev[j] = j;
+
+            continue;
+        }
+        
+        int dir = st.x == en.x;
         for (int h = min_layer; h <= numLayer; ++h) {
-            edge.dp_segs[i].cost[h] = 1e9;
+
+            if ((h & 1) != dir) 
+            /// layer with odd ID always be horizontal
+                continue;
+
             for (int k = min_layer; k <= numLayer; ++k) {
                 /// (st.x, st.y, k) -> (st.x, st.y, h) -> (en.x, en.y, h)
-
-                int dir = st.x == en.x ? 0 : 1;
-                if ((k & 1) != dir) 
-                /// layer with odd ID always be horizontal
-                    continue;
                 
                 /// check congestion
                 int con = get3DCon(Point(st.x, st.y, k), Point(st.x, st.y, h));
@@ -299,7 +316,6 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
                 }
             }
         }
-        i++;
     }
 }
 
@@ -319,14 +335,21 @@ void Solver::assign_layer_dp(Node &node, int min_layer) {
     for (auto &edge : node.neighbor) {
         assign_layer_dp(edge.child, min_layer);
         edge_dp(edge, min_layer);
+
         std::vector<std::vector<float> > intv(numLayer + 1, std::vector<float>(numLayer + 1, 0.0));
+        auto &last_dp = edge.dp_segs.back();
+
         for (int i = 1; i <= numLayer; ++i)
-            intv[i][i] = edge.dp_segs.front().cost[i];
-        for (int i = 1; i <= numLayer; ++i)
+            intv[i][i] = last_dp.cost[i];
+
+        for (int i = 1; i <= numLayer; ++i) {
+            mindp[i][i] += intv[i][i];
+
             for (int j = i + 1; j <= numLayer; ++j) {
-                intv[i][j] = std::min(intv[i][j - 1], edge.dp_segs.front().cost[j]);
+                intv[i][j] = std::min(intv[i][j - 1], last_dp.cost[j]);
                 mindp[i][j] += intv[i][j];
             }
+        }
     }
 
     int lmax = numLayer, rmin = 1;
@@ -344,8 +367,10 @@ void Solver::assign_layer_dp(Node &node, int min_layer) {
         for (int r = std::max(l, rmin); r <= numLayer; ++r) {
             if (get3DCon(Point(node.x, node.y, l), Point(node.x, node.y, r)) <= 0)
                 continue;
+
             float via_cost = powerPrefixSum[r] - powerPrefixSum[l - 1];
             via_cost += mindp[l][r];
+
             node.intv_cost[l][r] = via_cost;
         }
 
@@ -360,16 +385,19 @@ void Solver::assign_layer_dp(Node &node, int min_layer) {
                 node.dp.cost[r] = std::min(node.dp.cost[r], minvalue);
         }
     }
+
 }
 
 int Solver::assign_layer_for_edge(Edge &edge, int startLayer, std::vector<Segment> &segs_3d) {
     int curLayer = startLayer;
-    for (unsigned i = edge.segs.size() - 1; i >= 0; --i) {
+
+    for (int i = (int)edge.segs.size() - 1; i >= 0; --i) {
         auto &seg = edge.segs[i];
         auto st = seg.spoint;
         auto en = seg.epoint;
 
         auto &dp = edge.dp_segs[i];
+
         int nextLayer = dp.prev[curLayer];
 
         /// (st.x, st.y, next) -> (st.x, st.y, cur) -> (en.x, en.y, cur)
@@ -377,6 +405,7 @@ int Solver::assign_layer_for_edge(Edge &edge, int startLayer, std::vector<Segmen
         segs_3d.push_back(Segment({st.x, st.y, curLayer}, {en.x, en.y, curLayer}));
         curLayer = nextLayer;
     }
+
     return curLayer;
 }
 
@@ -396,20 +425,19 @@ void Solver::assign_layer_compute_seg(Node &node, int curLayer, std::vector<Segm
                 mincost = node.intv_cost[l][r];
                 bestL = l, bestR = r;
             }
-    
+
     assert(bestL != -1 && bestR != -1);
 
     segs_3d.push_back(Segment(Point(node.x, node.y, bestL), 
                               Point(node.x, node.y, bestR)));
-
     for (auto &edge :node.neighbor) {
         int bestLayer = -1;
         float cost = F_INF;
 
-        for (int i = bestL; i <= bestR; ++i)
-            if (edge.dp_segs.front().cost[i] < cost) {
+        for (int i = bestL; i <= bestR; ++i) 
+            if (edge.dp_segs.back().cost[i] < cost) {
                 bestLayer = i;
-                cost = edge.dp_segs.front().cost[i];
+                cost = edge.dp_segs.back().cost[i];
             }
 
         assert(bestLayer != -1);
@@ -430,8 +458,10 @@ bool Solver::route3d(RouteInfo &info) {
             bestValue = root_node.dp.cost[l];
             bestLayer = l;
         }
-    if (bestLayer == 0)
+
+    if (bestLayer == 0) 
         return false;
+
     assign_layer_compute_seg(root_node, bestLayer, info.segs_3d);
     return true;
 }
