@@ -102,6 +102,7 @@ public:
             return Segment({mina.x, std::min(mina.y, minb.y), mina.z}, {mina.x, std::max(maxa.x, maxb.x), mina.z});
         if (a.isVia())
             return Segment({mina.x, mina.y, std::min(mina.z, minb.z)}, {mina.x, mina.y, std::max(maxa.z, maxb.z)});
+        assert(0);
     }
 };
 

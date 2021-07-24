@@ -33,9 +33,11 @@ public:
 
 struct Node {
 public:
-    int x, y, layer, isPin, id;
+    int x, y, hasPin, id;
     DPInfo dp;
     std::vector<Edge> neighbor;
+    std::vector<int> layers;
+    std::vector<std::vector<float> > intv_cost;
 };
 
 class RouteInfo {

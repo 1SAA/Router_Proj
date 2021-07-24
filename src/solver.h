@@ -88,6 +88,8 @@ private:
     std::pair<std::vector<int>, std::vector<Point> > getMoveList();
 
     float calcCost(std::vector<Segment> &segs);
+
+    void printNet(Net &net);
 public:
     void run();
 

@@ -18,6 +18,7 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     numInst = problem.insts.size();
     numNet = problem.nets.size();
     totalCost = 0.0;
+    cntCellMove = 0;
 
     comparator = [this](int a, int b) {
         auto na = Nets[a], nb = Nets[b];
@@ -54,6 +55,7 @@ Solver::Solver(Parser::ProblemInfo &problem) {
         Layers[id] = Layer(x.name, x.idx, x.direction, x.defSupply, x.powerFactor);
         name2layer[x.name] = id;
     }
+
     powerPrefixSum.resize(numLayer + 1, 0.0);
     for (int i = 1; i <= numLayer; ++i)
         powerPrefixSum[i] = powerPrefixSum[i - 1] + Layers[i].powerFactor;
@@ -71,10 +73,12 @@ Solver::Solver(Parser::ProblemInfo &problem) {
             master.s2pin[p.name] = j;
             j++;
         }
+
         j = 0;
         for (auto b : x.blockages) {
             master.blocks[j] = Blockage(b.name, name2layer[b.layer], b.demand);
             master.s2block[b.name] = j;
+            j++;
         }
         i++;
     }
@@ -102,13 +106,15 @@ Solver::Solver(Parser::ProblemInfo &problem) {
 
     // Init Grid DataBase    
     DataBase = GridDB(numRow, numCol, numLayer);
+    
     for (int i = 1; i <= numRow; ++i) {
-        for (int j = 1; j <= numCol; ++j) {
-            for (int k = 1; k <= numLayer; ++k)
+        for (int j = 1; j <= numCol; ++j) 
+            for (int k = 1; k <= numLayer; ++k) {
                 DataBase.getSupply({i, j, k}) = Layers[k].supply;
-        }
+            }
     }
-    for (int i = 0, n = VAreas.size(); i < n; ++i) {
+
+    for (int i = 1, n = VAreas.size(); i < n; ++i) {
         for (auto p : VAreas[i].area) {
             DataBase.getVoltageLable({p.x, p.y}) = i;
         }
@@ -116,6 +122,7 @@ Solver::Solver(Parser::ProblemInfo &problem) {
 
     for (auto &p : problem.supplyGrids) 
         DataBase.getSupply({p.gX, p.gY, p.layer}) += p.diff;
+
 
     // Blockages
     for (auto &c : cInsts) 
@@ -162,7 +169,7 @@ Solver::Solver(Parser::ProblemInfo &problem) {
         net.cost = calcCost(net.segments) * net.weight;
         totalCost += net.cost;
     }
-
+    
     for (int i = 0; i < numNet; ++i)
         NetHeap.insert(i);
 
@@ -224,15 +231,17 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
         Segment curSeg = *iter;
         auto nxt = iter;
         nxt++;
+        bool flag = true;
         while (nxt != segList.end()) {
             if (Segment::isIntersect(curSeg, *nxt)) {
                 *nxt = Segment::Merge(curSeg, *nxt);
+                flag = false;
                 break;
             } else 
                 nxt++;
         }
-        segList.erase(++iter);
-        route_seg.push_back(curSeg);
+        segList.erase(iter++);
+        if (flag) route_seg.push_back(curSeg);
     }
 }
 
@@ -364,17 +373,26 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
 }
 
 void Solver::run() {
-    fprintf(stderr, "Original Cost: %f\n", totalCost);
+    dbg_print("Original Cost: %f\n", totalCost);
     
     auto insts = getMoveList();
     bool flag = route_after_move(insts.first, insts.second);
 
     if (flag == false)
-        printf("Reroute failed");
+        dbg_print("Reroute failed\n");
     else
-        printf("Reroute succeeded");
+        dbg_print("Reroute succeeded\n");
 
-    fprintf(stderr, "Cost after movement and reroute: %f\n", totalCost);
+    dbg_print("Cost after movement and reroute: %f\n", totalCost);
+}
+
+void Solver::printNet(Net &net) {
+    dbg_print("Net %s:\n", net.name.c_str());
+    for (auto pin : net.pins) {
+        auto inst = cInsts[pin.inst];
+        dbg_print("%d, %d, %d\n", inst.position.x, inst.position.y, pin.layer);
+    }
+    dbg_print("---------------------------\n");
 }
 
 void Solver::print_solution(std::ostream &os) {

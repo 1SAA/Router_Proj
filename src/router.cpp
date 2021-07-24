@@ -1,6 +1,7 @@
 #include <map>
 #include <queue>
 #include <algorithm>
+#include <cmath>
 
 #include "solver.h"
 #include "flute.h"
@@ -13,53 +14,63 @@
  */
 RouteInfo Solver::init2d(int netid) {
     Net &net = Nets[netid];
+    printNet(net);
     int deg = net.pins.size();
     int *xs = new DTYPE [deg];
     int *ys = new DTYPE [deg];
+    std::map<std::pair<int, int>, std::vector<int> > coord2pin;
+
     for (int i = 0, n = net.pins.size(); i < n; ++i) {
         CellInst &inst = cInsts[net.pins[i].inst];
         xs[i] = inst.position.x;
         ys[i] = inst.position.y;
+        coord2pin[std::make_pair(xs[i], ys[i])].push_back(i);
     }
 
     const int FLUTE_ACC = 3;
     Tree t = flute(deg, xs, ys, FLUTE_ACC);
-    
+    printtree(t);
     int treeSize = t.deg * 2 - 2;
 
     RouteInfo info;
     info.netid = netid;
-    info.tree.nodes.resize(treeSize);
-    std::map<std::pair<int, int>, std::vector<int> > coord2id;
+    std::map<std::pair<int, int>, int> coord2id;
+
+    int size = 0;
 
     for (int i = 0; i < treeSize; ++i) {
-        Node &node = info.tree.nodes[i];
-        node.x = t.branch[i].x;
-        node.y = t.branch[i].y;
-        if (t.branch[i].n != i) {
-            info.tree.nodes[t.branch[i].n].neighbor.push_back({
-                info.tree.nodes[t.branch[i].n],
-                node,
+        std::pair<int, int> pos[2];
+        pos[0] = std::make_pair(t.branch[i].x, t.branch[i].y);
+        pos[1] = std::make_pair(t.branch[t.branch[i].n].x, t.branch[t.branch[i].n].y);
+
+        for (int j = 0; j < 2; ++j) {
+            if (coord2id.find(pos[j]) == coord2id.end()) {
+                coord2id[pos[j]] = size;
+
+                info.tree.nodes.push_back(Node());
+                auto node = info.tree.nodes.back();
+
+                node.id = size;        
+                node.layers.resize(coord2pin[pos[j]].size(), 0);
+                node.hasPin = node.layers.size() > 0;
+                node.x = pos[j].first, node.y = pos[j].second;
+
+                size++;        
+            }
+        }
+
+        if (pos[0] != pos[1]) {
+            auto child_id = coord2id[pos[0]];
+            auto parent_id = coord2id[pos[1]];
+            info.tree.nodes[parent_id].neighbor.push_back(Edge(
+                info.tree.nodes[parent_id],
+                info.tree.nodes[child_id],
                 std::vector<Segment>(),
                 std::vector<DPInfo>()
-            });
-            info.edges.push_back(&info.tree.nodes[t.branch[i].n].neighbor.back());
-            //info.twopins.push_back((TwoPin2D){node, info.tree.nodes[t.branch[i].n], std::vector<Segment>()});
+            ));
         } else {
-            info.tree.root = i;
+            info.tree.root = coord2id[pos[0]];
         }
-        coord2id[std::make_pair(node.x, node.y)].push_back(i);
-    }
-
-    for (int i = 0, n = net.pins.size(); i < n; ++i) {
-        CellInst &inst = cInsts[net.pins[i].inst];
-        int x = inst.position.x, y = inst.position.y;
-        auto iter = coord2id.find(std::make_pair(x, y));
-        DEBUG(iter != coord2id.end());
-        int id = coord2id[std::make_pair(x, y)].back();
-
-        info.tree.nodes[id].isPin = 1;
-        info.tree.nodes[id].layer = net.pins[i].layer;
     }
 
     delete xs;
@@ -157,11 +168,13 @@ bool Solver::route2pin2d(Edge &twopin) {
     const double ratio = 1.5; /// increase the bounding box by a ratio
     int midX = (lX + hX) / 2, wX = hX - lX;
     int midY = (lY + hY) / 2, wY = hY - lY;
-    lX = midX - wX * ratio / 2, hX = midX + wX * ratio / 2;
-    lY = midY - wY * ratio / 2, hY = midY + wY * ratio / 2;
+
+    lX = std::max((int)floor(midX - wX * ratio / 2), 1), hX = std::min((int)ceil(midX + wX * ratio / 2), numRow);
+    lY = std::max((int)floor(midY - wY * ratio / 2), 1), hY = std::min((int)ceil(midY + wY * ratio / 2), numCol);
+    dbg_print("%d %d %d %d\n", lX, hX, lY, hY);
+
     int min_cost = INF, max_con = INF;
     std::vector<Segment> best_route;
-
     for (int bx = lX; bx <= hX; ++bx)
         for (int by = lY; by <= hY; ++by) {
             /// two possible routes from st -> (bx, by) with identical cost
@@ -205,7 +218,6 @@ bool Solver::route2pin2d(Edge &twopin) {
         }
 
     if (min_cost == INF) {
-        /// TODO call maze routing
         if (!mazeRouting(twopin) )
             return false;
         return true;
@@ -215,10 +227,11 @@ bool Solver::route2pin2d(Edge &twopin) {
 }
 
 bool Solver::route2d(RouteInfo &info) {
-    for (auto twopin : info.edges) 
-        if (route2pin2d(*twopin) == false)
+    for (auto twopin : info.edges)
+        if (route2pin2d(*twopin) == false) {
+            dbg_print("(%d, %d) <--> (%d, %d)", twopin->child.x, twopin->child.y, twopin->parent.x, twopin->parent.y);
             return false;
-    /// TODO update 2D congestion map
+        }
     return true;
 }
 
@@ -250,10 +263,10 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
         edge.dp_segs[i].cost.resize(numLayer + 1);
         edge.dp_segs[i].prev.resize(numLayer + 1);
 
-        for (int h = 1; h <= min_layer; ++h) {
+        for (int h = min_layer; h <= numLayer; ++h) {
             edge.dp_segs[i].cost[h] = 1e9;
-            for (int k = 1; k <= min_layer; ++k) {
-                /// (st.x, st.y, k) -> (en.x, en.y, k) -> (en.x, en.y, h)
+            for (int k = min_layer; k <= numLayer; ++k) {
+                /// (st.x, st.y, k) -> (st.x, st.y, h) -> (en.x, en.y, h)
 
                 int dir = st.x == en.x ? 0 : 1;
                 if ((k & 1) != dir) 
@@ -261,8 +274,8 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
                     continue;
                 
                 /// check congestion
-                int con = get3DCon(Point(st.x, st.y, k), Point(en.x, en.y, k));
-                con = std::min(con, get3DCon(Point(en.x, en.y, k), Point(en.x, en.y, h)));
+                int con = get3DCon(Point(st.x, st.y, k), Point(st.x, st.y, h));
+                con = std::min(con, get3DCon(Point(st.x, st.y, h), Point(en.x, en.y, h)));
                 if (con <= 0)
                     continue;
                 
@@ -276,7 +289,7 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
                               powerPrefixSum[k - 1] - powerPrefixSum[h - 1] : 
                               powerPrefixSum[h] - powerPrefixSum[k];
 
-                float HVdist = (Point(st.x, st.y, k) - Point(en.x, en.y, k)).norm1() * Layers[k].powerFactor;
+                float HVdist = (Point(st.x, st.y, h) - Point(en.x, en.y, h)).norm1() * Layers[h].powerFactor;
 
                 float total_value = Zdist + HVdist + prev_value;
 
@@ -299,34 +312,52 @@ void Solver::edge_dp(Edge &edge, int min_layer) {
  * @return void
  */
 void Solver::assign_layer_dp(Node &node, int min_layer) {
-    node.dp.cost.resize(numLayer + 1, 0.0);
-    node.dp.prev.resize(numLayer + 1);
+    node.dp.cost.resize(numLayer + 1, F_INF);
+
+    std::vector<std::vector<float> > mindp(numLayer + 1, std::vector<float>(numLayer + 1, 0.0));
 
     for (auto &edge : node.neighbor) {
         assign_layer_dp(edge.child, min_layer);
         edge_dp(edge, min_layer);
-        for (int i = 1; i < numLayer; ++i)
-            node.dp.cost[i] += edge.dp_segs.back().cost[i];
+        std::vector<std::vector<float> > intv(numLayer + 1, std::vector<float>(numLayer + 1, 0.0));
+        for (int i = 1; i <= numLayer; ++i)
+            intv[i][i] = edge.dp_segs.front().cost[i];
+        for (int i = 1; i <= numLayer; ++i)
+            for (int j = i + 1; j <= numLayer; ++j) {
+                intv[i][j] = std::min(intv[i][j - 1], edge.dp_segs.front().cost[j]);
+                mindp[i][j] += intv[i][j];
+            }
     }
-    if (node.neighbor.size() == 0) {
-        /// leaf node
-        assert(node.isPin);
-        int px = node.x, py = node.y;
-        node.dp.cost.resize(numLayer + 1, F_INF);
 
-        float cost = 0.0;
-        for (int i = node.layer; i < numLayer; ++i) {
-            if (get3DCon({px, py, i}) <= 0)
-                break;
-            cost += Layers[i].powerFactor;
-            node.dp.cost[i] = cost;
+    int lmax = numLayer, rmin = 1;
+
+    if (node.hasPin) {
+        for (auto pin : node.layers) {
+            lmax = std::min(pin, lmax);
+            rmin = std::max(pin, rmin);
         }
-        cost = 0.0;
-        for (int i = node.layer; i >= 1; --i) {
-            if (get3DCon({px, py, i}) <= 0)
-                break;
-            cost += Layers[i].powerFactor;
-            node.dp.cost[i] = cost;
+    }
+
+    node.intv_cost.resize(numLayer + 1, std::vector<float>(numLayer + 1, F_INF));
+
+    for (int l = 1; l <= lmax; ++l)
+        for (int r = std::max(l, rmin); r <= numLayer; ++r) {
+            if (get3DCon(Point(node.x, node.y, l), Point(node.x, node.y, r)) <= 0)
+                continue;
+            float via_cost = powerPrefixSum[r] - powerPrefixSum[l - 1];
+            via_cost += mindp[l][r];
+            node.intv_cost[l][r] = via_cost;
+        }
+
+    for (int l = 1; l <= lmax; ++l) {
+        float minvalue = F_INF;
+
+        for (int r = numLayer; r >= std::max(l, rmin); --r) {
+
+            minvalue = std::min(minvalue, node.intv_cost[l][r]);
+
+            if (r >= min_layer)
+                node.dp.cost[r] = std::min(node.dp.cost[r], minvalue);
         }
     }
 }
@@ -341,9 +372,9 @@ int Solver::assign_layer_for_edge(Edge &edge, int startLayer, std::vector<Segmen
         auto &dp = edge.dp_segs[i];
         int nextLayer = dp.prev[curLayer];
 
-        /// (st.x, st.y, next) -> (en.x, en.y, next) -> (en.x, en.y, cur)
-        segs_3d.push_back(Segment({st.x, st.y, nextLayer}, {en.x, en.y, nextLayer}));
-        segs_3d.push_back(Segment({en.x, en.y, nextLayer}, {en.x, en.y, curLayer}));
+        /// (st.x, st.y, next) -> (st.x, st.y, cur) -> (en.x, en.y, cur)
+        segs_3d.push_back(Segment({st.x, st.y, nextLayer}, {st.x, st.y, curLayer}));
+        segs_3d.push_back(Segment({st.x, st.y, curLayer}, {en.x, en.y, curLayer}));
         curLayer = nextLayer;
     }
     return curLayer;
@@ -356,13 +387,34 @@ int Solver::assign_layer_for_edge(Edge &edge, int startLayer, std::vector<Segmen
  * @return void
  */
 void Solver::assign_layer_compute_seg(Node &node, int curLayer, std::vector<Segment> &segs_3d) {
-    if (node.isPin)
-        segs_3d.push_back(Segment({node.x, node.y, curLayer}, {node.x, node.y, node.layer}));
-    else
-        node.layer = curLayer;
+    int bestL = -1, bestR = -1;
+    float mincost = F_INF;
+
+    for (int l = 1; l <= curLayer; ++l)
+        for (int r = curLayer; r <= numLayer; ++r)
+            if (node.intv_cost[l][r] < mincost) {
+                mincost = node.intv_cost[l][r];
+                bestL = l, bestR = r;
+            }
+    
+    assert(bestL != -1 && bestR != -1);
+
+    segs_3d.push_back(Segment(Point(node.x, node.y, bestL), 
+                              Point(node.x, node.y, bestR)));
 
     for (auto &edge :node.neighbor) {
-        int nextLayer = assign_layer_for_edge(edge, curLayer, segs_3d);
+        int bestLayer = -1;
+        float cost = F_INF;
+
+        for (int i = bestL; i <= bestR; ++i)
+            if (edge.dp_segs.front().cost[i] < cost) {
+                bestLayer = i;
+                cost = edge.dp_segs.front().cost[i];
+            }
+
+        assert(bestLayer != -1);
+
+        int nextLayer = assign_layer_for_edge(edge, bestLayer, segs_3d);
         assign_layer_compute_seg(edge.child, nextLayer, segs_3d);
     }
 }

@@ -83,10 +83,6 @@ private:
     std::vector<std::vector<int> > VoltageLable;
     
     int NumRow, NumColumn, NumLayer;
-    inline void decrease2D(int x, int y, int z) {
-        if (z & 1) Congestion2D[x][y].first -= 1;
-        else Congestion2D[x][y].second -= 1;
-    }
 public:
     GridDB() {}
     GridDB(int NumRow, int NumColumn, int NumLayer) :
@@ -94,6 +90,23 @@ public:
     {
         Congestion2D.resize(NumRow + 1, std::vector<Con2D>(NumColumn + 1, std::make_pair(0, 0)));
         Congestion3D.resize(NumRow + 1, std::vector<Con3D>(NumColumn + 1, NumLayer + 1));
+        VoltageLable.resize(NumRow + 1, std::vector<int>(NumColumn, 0));
+    }
+
+    void print() {
+        dbg_print("2D Horizontal Congestion:\n");
+        for (int i = 1; i <= NumRow; ++i) {
+            for (int j = 1; j <= NumColumn; ++j)
+                dbg_print("%d ", Congestion2D[i][j].first);
+            dbg_print("\n");
+        }
+        dbg_print("2D Vertical Congestion:\n");
+        for (int i = 1; i <= NumRow; ++i) {
+            for (int j = 1; j <= NumColumn; ++j)
+                dbg_print("%d ", Congestion2D[i][j].second);
+            dbg_print("\n");
+        }
+        dbg_print("---------------------------\n");
     }
 
     void get2DFrom3D() {
@@ -151,7 +164,7 @@ public:
                 minCon = std::min(minCon, Congestion2D[seg.spoint.x][i].first);
             return minCon;
         }
-        return 0;
+        return std::min(Congestion2D[seg.spoint.x][seg.spoint.y].first, Congestion2D[seg.spoint.x][seg.spoint.y].second);
     }
 
     int get3DCon(const Point &p) const {

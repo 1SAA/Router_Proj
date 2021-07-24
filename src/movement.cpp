@@ -195,44 +195,7 @@ Point Solver::findPosition(CellInst &inst, int posx, int posy) {
 
 std::pair<std::vector<int>, std::vector<Point> >
 Solver::getMoveList() {
-/*
-    for (int i = 0; i < numNet; i++)
-        dbg_print("rank %d: %d\n", i, id[i]);
-*/
-
-    /*
-    TO DO: Initialize congestion weight
-    */
-   /*
-   for (int k = 1; k <= numLayer; k++) {
-       int defSup = Layers[k].supply;
-       for (int i = 1; i <= numRow; i++)
-        for (int j = 1; j <= numCol; j++)
-            leftSup[k][i][j] = defSup;
-//        dbg_print("Default Supply %d\n", defSup);
-   }
-   
-    for (auto &d : supPos) {
-        leftSup[d.position.z][d.position.x][d.position.y] += d.addition;
-//        dbg_print("Addition %d\n", d.addition);
-    }
-    */
-
-    /*
-    for (auto &inst : cInsts)
-        addInst(inst, -1);
-    */
-
-    /*
-    vector<int> lock(numInst);
-    vector<OneMovement> ret;
-    for (int i = 0; i < numInst; i++) {
-        auto &inst = cInsts[i];
-        if (!inst.movable)
-            lock[i] = 1;   
-    }
-    */
-
+    dbg_print_line("\n");
     std::vector<int> movedInst;
     std::vector<Point> locations;
 
@@ -247,7 +210,7 @@ Solver::getMoveList() {
         movedInst.push_back(p.inst);
         Lock[p.inst] = 1;
     }
-
+    
     for (auto idx : movedInst)
         incBlockage(cInsts[idx], cInsts[idx].position, -1);
 
@@ -266,44 +229,13 @@ Solver::getMoveList() {
     for (auto idx : movedInst)
         incBlockage(cInsts[idx], cInsts[idx].position, 1);
 
-    return std::make_pair(movedInst, locations);
-
-    /*
-    for (int i = 0; i < numNet; i++) {
-
-        //dbg_print("Net number %d\n", i);
-
-        auto &net = Nets[id[i]];
-        for (auto &p : net.pins) {
-            if (lock[p.inst])
-                continue;
-            //dbg_print("The number of instance %d\n", p.inst);
-            CellInst &inst = cInsts[p.inst];
-            addInst(inst, 1);
-            Point o = inst.position, t;
-            moveInst(inst, t);
-            //dbg_print("Destination found\n");
-            //dbg_print("%d %d\n", t.x, t.y);
-            findPosition(inst, t.x, t.y);
-            //dbgaddInst_print("Placement location found\n");
-            (inst, -1);
-            if (inst.position == o)
-                continue;
-            lock[p.inst] = 1;
-            ret.push_back(OneMovement(inst.name, inst.position));
-            if (!inst.movedFlag)
-                cntCellMove++;
-            inst.movedFlag = 1;
-        }
-    }
-    */
-
     for (unsigned i = 0; i < movedInst.size(); ++i) {
         int idx = movedInst[i];
-        dbg_print("Moved inst %d: ", movedInst[i]);
+        dbg_print("Moved inst %s: ", cInsts[idx].name.c_str());
         dbg_print("(%d, %d) --> ", cInsts[idx].position.x, cInsts[idx].position.y);
         dbg_print("(%d, %d)\n", locations[i].x, locations[i].y);
     }
 
+    dbg_print_line("\n");
     return std::make_pair(movedInst, locations);
 }
