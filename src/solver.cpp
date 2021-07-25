@@ -11,6 +11,7 @@
  * @brief Init solver from ProblemInfo
  */
 Solver::Solver(Parser::ProblemInfo &problem) {
+    Flute::readLUT();
     maxCellMove = problem.maxCellMove;
     numRow = problem.gGridX;
     numCol = problem.gGridY;
@@ -165,7 +166,7 @@ Solver::Solver(Parser::ProblemInfo &problem) {
 
     for (auto &net : Nets) {
         canonicalize(net.segments);
-        net.updateBox();
+        updateBox(net);
         net.updateLength();
         net.cost = calcCost(net.segments) * net.weight;
         totalCost += net.cost;
@@ -187,7 +188,7 @@ float Solver::calcCost(std::vector<Segment> &segs) {
     float cost = 0.0;
     for (auto seg : segs) {
         if (seg.isVertical() || seg.isHorizontal()) 
-            cost += (seg.spoint - seg.epoint).norm1() * Layers[seg.spoint.z].powerFactor;
+            cost += ((seg.spoint - seg.epoint).norm1() + 1) * Layers[seg.spoint.z].powerFactor;
         else {
             int minz = seg.min().z, maxz = seg.max().z;
             for (int i = minz; i <= maxz; ++i) {
@@ -226,7 +227,7 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
             continue;
         segList.push_back(seg);
     }
-
+    
     route_seg.clear();
     for (auto iter = segList.begin(); iter != segList.end(); ) {
         Segment curSeg = *iter;
@@ -253,11 +254,10 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
  */
 bool Solver::route_nets(std::vector<int> &ids) {
     /// init 2d routing info
-    /// TODO restore changes if failed
-
-    std::vector<RouteInfo> r2d;
-    for (auto &id : ids) 
-        r2d.push_back(init2d(id));
+    
+    std::vector<RouteInfo> r2d(ids.size());
+    for (unsigned i = 0, n = ids.size(); i < n; ++i)
+        init2d(ids[i], r2d[i]);
     
     /// do 2d routing
     std::vector<std::vector<Segment> > backup;
@@ -268,13 +268,16 @@ bool Solver::route_nets(std::vector<int> &ids) {
             return false;
         }
         std::vector<Segment> segs_2d;
-        for (auto edge : info.edges)
-            segs_2d.insert(segs_2d.begin(), edge->segs.begin(), edge->segs.end());
+
+        for (auto &node : info.tree.nodes)
+            for (auto &twopin : node.neighbor)
+                segs_2d.insert(segs_2d.end(), twopin.segs.begin(), twopin.segs.end());
+
         canonicalize(segs_2d);
         DataBase.inc2DCon(segs_2d, -1);
         backup.push_back(segs_2d);
     }
-    
+
     backup.clear();
     /// 3d routing, i.e. layer assignment
     for (auto &info : r2d) {
@@ -283,7 +286,15 @@ bool Solver::route_nets(std::vector<int> &ids) {
                 DataBase.inc3DCon(x, 1);
             return false;
         }
+        printNet(Nets[info.netid]);
         canonicalize(info.segs_3d);
+
+        dbg_print("%d\n", info.netid);
+        for (auto x : info.segs_3d) {
+            dbg_print("(%d %d %d)", x.spoint.x, x.spoint.y, x.spoint.z);
+            dbg_print(" -- (%d %d %d)\n", x.epoint.x, x.epoint.y, x.epoint.z);
+        }
+        dbg_print("----------------------\n");
         DataBase.inc3DCon(info.segs_3d, -1);
         backup.push_back(info.segs_3d);
     }
@@ -377,7 +388,7 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
 
     // update stats
     for (auto &x : changed_net) {
-        Nets[x].updateBox();
+        updateBox(Nets[x]);
         Nets[x].updateLength();
         Nets[x].cost = calcCost(Nets[x].segments) * Nets[x].weight;
         totalCost += Nets[x].cost;
@@ -436,7 +447,7 @@ void Solver::run() {
     dbg_print("Original Cost: %f\n", totalCost);
 
     /// simulated annealing
-    int max_step = 10;
+    int max_step = 1;
     float original_temp = sqrt(totalCost);
 
     for (int i = 0; i < max_step; ++i) {
@@ -451,8 +462,10 @@ void Solver::run() {
 
         auto insts = getMoveList();
         bool flag = route_after_move(insts.first, insts.second);
-
+        
         if (flag == false) {
+            dbg_print("Failed");
+
             /// prevent routing the same net in the next time and get no solution
             backup_heap.push_back(*NetHeap.begin());
             NetHeap.erase(NetHeap.begin());

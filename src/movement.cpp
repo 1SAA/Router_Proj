@@ -43,20 +43,23 @@ int Solver::getLength(Net &net) {
     return sum;
 }
 
-void Solver::getBoundingBox(Net &net, Point &l, Point &r) {
+void Solver::updateBox(Net &net) {
+    Point &l = net.lp, &r = net.rp;
 
     l.x = l.y = l.z = max(numRow, max(numCol, numLayer)) + 1;
     r.x = r.y = r.z = 0;
 
-    for (auto &seg : net.segments) {
-        
-        l.x = min(l.x, min(seg.spoint.x, seg.epoint.x));
-        l.y = min(l.y, min(seg.spoint.y, seg.epoint.y));
-        l.z = min(l.z, min(seg.spoint.z, seg.epoint.z));
+    for (auto &pin : net.pins) {
+        Point p = cInsts[pin.inst].position;
+        p.z = pin.layer;
 
-        r.x = max(r.x, max(seg.spoint.x, seg.epoint.x));
-        r.y = max(r.y, max(seg.spoint.y, seg.epoint.y));
-        r.z = max(r.z, max(seg.spoint.z, seg.epoint.z));
+        l.x = min(l.x, p.x);
+        l.y = min(l.y, p.y);
+        l.z = min(l.z, p.z);
+
+        r.x = max(r.x, p.x);
+        r.y = max(r.y, p.y);
+        r.z = max(r.z, p.z);
     }
 }
 

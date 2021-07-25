@@ -12,11 +12,11 @@
  * @param netid 
  * @return 2d routing info
  */
-RouteInfo Solver::init2d(int netid) {
+void Solver::init2d(int netid, RouteInfo &info) {
     Net &net = Nets[netid];
     int deg = net.pins.size();
-    int *xs = new DTYPE [deg];
-    int *ys = new DTYPE [deg];
+    int *xs = new int [deg];
+    int *ys = new int [deg];
     std::map<std::pair<int, int>, std::vector<int> > coord2pin;
 
     for (int i = 0, n = net.pins.size(); i < n; ++i) {
@@ -27,19 +27,21 @@ RouteInfo Solver::init2d(int netid) {
     }
 
     const int FLUTE_ACC = 3;
-    Tree t = flute(deg, xs, ys, FLUTE_ACC);
 
-    RouteInfo info;
+    Flute::Tree t = Flute::flute(deg, xs, ys, FLUTE_ACC);
+
     info.netid = netid;
     
     std::map<std::pair<int, int>, int> coord2id;
     int size = 0;
 
+    std::set<std::pair<int, int> > visited;
+
     for (int i = 0; i < t.deg * 2 - 2; ++i) {
         std::pair<int, int> pos[2];
         pos[0] = std::make_pair(t.branch[i].x, t.branch[i].y);
         pos[1] = std::make_pair(t.branch[t.branch[i].n].x, t.branch[t.branch[i].n].y);
-
+        
         for (int j = 0; j < 2; ++j) {
             if (coord2id.find(pos[j]) == coord2id.end()) {
                 coord2id[pos[j]] = size;
@@ -61,17 +63,27 @@ RouteInfo Solver::init2d(int netid) {
                 size++;        
             }
         }
+    }
+
+    for (int i = 0; i < t.deg * 2 - 2; ++i) {
+        std::pair<int, int> pos[2];
+        pos[0] = std::make_pair(t.branch[i].x, t.branch[i].y);
+        pos[1] = std::make_pair(t.branch[t.branch[i].n].x, t.branch[t.branch[i].n].y);
 
         if (pos[0] != pos[1]) {
             auto child_id = coord2id[pos[0]];
             auto parent_id = coord2id[pos[1]];
+            if (visited.find(std::make_pair(child_id, parent_id)) != visited.end())
+                continue;
+
+            visited.insert(std::make_pair(child_id, parent_id));
+            
             info.tree.nodes[parent_id].neighbor.push_back(Edge(
                 info.tree.nodes[parent_id],
                 info.tree.nodes[child_id],
                 std::vector<Segment>(),
                 std::vector<DPInfo>()
             ));
-            info.edges.push_back(&info.tree.nodes[parent_id].neighbor.back());
         } else {
             info.tree.root = coord2id[pos[0]];
         }
@@ -79,8 +91,6 @@ RouteInfo Solver::init2d(int netid) {
 
     delete xs;
     delete ys;
-
-    return info;
 }
 
 /**
@@ -164,6 +174,7 @@ bool Solver::route2pin2d(Edge &twopin) {
     twopin.segs.clear();
     /// calculate bounding box
     Node &st = twopin.child, &en = twopin.parent;
+    dbg_print("(%d, %d) <-> (%d, %d)\n", st.x, st.y, en.x, en.y);
     int lX = std::min(en.x, st.x);
     int lY = std::min(en.y, st.y);
     int hX = std::max(en.x, st.x);
@@ -178,6 +189,7 @@ bool Solver::route2pin2d(Edge &twopin) {
 
     int min_cost = INF, max_con = INF;
     std::vector<Segment> best_route;
+
     for (int bx = lX; bx <= hX; ++bx)
         for (int by = lY; by <= hY; ++by) {
             /// two possible routes from st -> (bx, by) with identical cost
@@ -231,11 +243,16 @@ bool Solver::route2pin2d(Edge &twopin) {
 }
 
 bool Solver::route2d(RouteInfo &info) {
-    for (auto twopin : info.edges)
-        if (route2pin2d(*twopin) == false) {
-            dbg_print("(%d, %d) <--> (%d, %d)", twopin->child.x, twopin->child.y, twopin->parent.x, twopin->parent.y);
-            return false;
+    int cnt = 0;
+    for (auto &node : info.tree.nodes)
+        for (auto &twopin : node.neighbor) {
+            cnt++;
+            if (route2pin2d(twopin) == false) {
+                dbg_print("(%d, %d) <--> (%d, %d)", twopin.child.x, twopin.child.y, twopin.parent.x, twopin.parent.y);
+                return false;
+            }
         }
+    dbg_print("%d\n", cnt);
     return true;
 }
 

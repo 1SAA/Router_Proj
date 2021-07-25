@@ -47,6 +47,7 @@ public:
     Segment() = default;
     Point spoint, epoint;
     Segment(Point s, Point e): spoint(s), epoint(e) {}
+
     bool isVertical() const {return spoint.x != epoint.x;}
     bool isHorizontal() const {return spoint.y != epoint.y;}
     bool isVia() const {return spoint.z != epoint.z;}
@@ -99,7 +100,7 @@ public:
         if (a.isVertical())
             return Segment({std::min(mina.x, minb.x), mina.y, mina.z}, {std::max(maxa.x, maxb.x), mina.y, mina.z});
         if (a.isHorizontal())
-            return Segment({mina.x, std::min(mina.y, minb.y), mina.z}, {mina.x, std::max(maxa.x, maxb.x), mina.z});
+            return Segment({mina.x, std::min(mina.y, minb.y), mina.z}, {mina.x, std::max(maxa.y, maxb.y), mina.z});
         if (a.isVia())
             return Segment({mina.x, mina.y, std::min(mina.z, minb.z)}, {mina.x, mina.y, std::max(maxa.z, maxb.z)});
         assert(0);
@@ -183,26 +184,10 @@ public:
     std::vector<Segment> segments;
     Point lp, rp; // bounding box boundary
 
-    void updateBox() {
-        lp.x = lp.y = lp.z = INF;
-        rp.x = rp.y = rp.z = 0;
-
-        for (auto &seg : segments) {
-            
-            lp.x = std::min(lp.x, std::min(seg.spoint.x, seg.epoint.x));
-            lp.y = std::min(lp.y, std::min(seg.spoint.y, seg.epoint.y));
-            lp.z = std::min(lp.z, std::min(seg.spoint.z, seg.epoint.z));
-
-            rp.x = std::max(rp.x, std::max(seg.spoint.x, seg.epoint.x));
-            rp.y = std::max(rp.y, std::max(seg.spoint.y, seg.epoint.y));
-            rp.z = std::max(rp.z, std::max(seg.spoint.z, seg.epoint.z));
-        }
-    }
-
     void updateLength() {
         length = 0;
         for (auto &seg : segments) 
-            length += (seg.spoint - seg.epoint).norm1();
+            length += (seg.spoint - seg.epoint).norm1() + 1;
     }
 
     Net() = default;

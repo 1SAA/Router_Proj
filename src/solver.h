@@ -49,7 +49,7 @@ private:
 
     void canonicalize(std::vector<Segment> &route_seg);
 
-    RouteInfo init2d(int netid);
+    void init2d(int netid, RouteInfo &info);
 
     bool route2d(RouteInfo &info);
 
@@ -77,7 +77,7 @@ private:
 
     int getLength(Net &net);
 
-    void getBoundingBox(Net &net, Point &l, Point &r);
+    void updateBox(Net &net);
 
     void get2DBound(Net &net, Point &l, Point &r, std::string n);
 

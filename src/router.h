@@ -58,11 +58,9 @@ class RouteInfo {
 public:
     int netid;
     STtree tree;
-    std::vector<Edge*> edges;
     std::vector<Segment> segs_3d;
     RouteInfo() {
         netid = -1;
-        edges.clear();
         segs_3d.clear();
     }
 
