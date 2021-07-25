@@ -125,7 +125,6 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     for (auto &p : problem.supplyGrids) 
         DataBase.getSupply({p.gX, p.gY, p.layer}) += p.diff;
 
-
     // Blockages
     for (auto &c : cInsts) 
         incBlockage(c, c.position, 1);
@@ -161,11 +160,19 @@ Solver::Solver(Parser::ProblemInfo &problem) {
     for (auto &x : problem.routes) {
         int netid = name2net[x.netName];
         Nets[netid].segments.push_back(Segment(Point(x.sX, x.sY, x.sL), Point(x.eX, x.eY, x.eL)));
-        DataBase.inc3DCon(Nets[netid].segments, 1);
     }
 
     for (auto &net : Nets) {
         canonicalize(net.segments);
+
+        if (net.segments.size() == 0) {
+            auto &inst = cInsts[net.pins[0].inst];
+            net.segments.push_back(Segment(Point(inst.position.x, inst.position.y, net.pins[0].layer),
+                                           Point(inst.position.x, inst.position.y, net.pins[0].layer)
+            ));
+        }
+
+        DataBase.inc3DCon(net.segments, -1);
         updateBox(net);
         net.updateLength();
         net.cost = calcCost(net.segments) * net.weight;
@@ -222,11 +229,8 @@ float Solver::calcCost(std::vector<Segment> &segs) {
 void Solver::canonicalize(std::vector<Segment> &route_seg) {
     std::list<Segment> segList;
 
-    for (auto &seg : route_seg) {
-        if (seg.spoint == seg.epoint)
-            continue;
+    for (auto &seg : route_seg) 
         segList.push_back(seg);
-    }
     
     route_seg.clear();
     for (auto iter = segList.begin(); iter != segList.end(); ) {
@@ -294,17 +298,17 @@ bool Solver::route_nets(std::vector<int> &ids) {
         }
         
         canonicalize(info.segs_3d);
-        
+
         DataBase.inc3DCon(info.segs_3d, -1);
         backup.push_back(info.segs_3d);
     }
 
     for (auto &segs_3d : backup)
         DataBase.inc3DCon(segs_3d, 1);
-
+    
     for (auto &info : r2d)
         Nets[info.netid].segments = info.segs_3d;
-
+    
     return true;
 }
 
@@ -439,9 +443,9 @@ void Solver::run() {
     dbg_print("Original Cost: %f\n", totalCost);
 
     /// simulated annealing
-    int max_step = 3;
+    int max_step = 10;
     float original_temp = sqrt(totalCost);
-
+    
     for (int i = 0; i < max_step; ++i) {
         if (cntCellMove >= maxCellMove)
             break;

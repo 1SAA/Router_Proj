@@ -11,7 +11,7 @@ using std::map;
 using std::min;
 using std::max;
 
-const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 1, BETA = 30;
+const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 2, BETA = 30;
 
 int Solver::getLength(Net &net) {
     int sum = 0;
