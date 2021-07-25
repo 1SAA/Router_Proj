@@ -249,6 +249,7 @@ void Solver::canonicalize(std::vector<Segment> &route_seg) {
 
 /**
  * @brief route nets, first do 2d routing, then do layer assignment
+ *        keep congestion map unchanged
  * @param ids nets that needs to be routed
  * @return bool route successful or not
  */
@@ -263,6 +264,7 @@ bool Solver::route_nets(std::vector<int> &ids) {
     std::vector<std::vector<Segment> > backup;
     for (auto &info : r2d) {
         if (route2d(info) == false) {
+            dbg_print("2D failed\n");
             for (auto &x : backup)
                 DataBase.inc2DCon(x, 1);
             return false;
@@ -278,26 +280,28 @@ bool Solver::route_nets(std::vector<int> &ids) {
         backup.push_back(segs_2d);
     }
 
+    for (auto &segs_2d : backup)
+        DataBase.inc2DCon(segs_2d, 1);
+
     backup.clear();
     /// 3d routing, i.e. layer assignment
     for (auto &info : r2d) {
         if (route3d(info) == false) {
+            dbg_print("3D failed\n");
             for (auto &x : backup)
                 DataBase.inc3DCon(x, 1);
             return false;
         }
-        printNet(Nets[info.netid]);
+        
         canonicalize(info.segs_3d);
-
-        dbg_print("%d\n", info.netid);
-        for (auto x : info.segs_3d) {
-            dbg_print("(%d %d %d)", x.spoint.x, x.spoint.y, x.spoint.z);
-            dbg_print(" -- (%d %d %d)\n", x.epoint.x, x.epoint.y, x.epoint.z);
-        }
-        dbg_print("----------------------\n");
+        
         DataBase.inc3DCon(info.segs_3d, -1);
         backup.push_back(info.segs_3d);
     }
+
+    for (auto &segs_3d : backup)
+        DataBase.inc3DCon(segs_3d, 1);
+
     for (auto &info : r2d)
         Nets[info.netid].segments = info.segs_3d;
 
@@ -312,13 +316,11 @@ bool Solver::route_nets(std::vector<int> &ids) {
  */
 bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<Point> &new_locs) {
     /// find nets that are affected
-    std::vector<int> changed_net;
+    changed_net.clear();
     std::vector<Point> old_location;
 
     for (int i = 0, n = insts.size(); i < n; ++i) {
         int id = insts[i];
-        if (cInsts[id].position == new_locs[i])
-            continue;
         for (auto &net_id : cInsts[id].NetIds) 
             changed_net.push_back(net_id);
     }
@@ -363,29 +365,7 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
     }
     
     bool flag = route_nets(changed_net);
-    /// recover
-    for (auto idx : changed_net)
-        NetHeap.insert(idx);
-
-    if (!flag) {
-        recover();
-        return false;
-
-        for (unsigned i = 0, n = insts.size(); i < n; ++i) {
-            int id = insts[i];
-            int x = cInsts[id].position.x, y = cInsts[id].position.y;
-            incBlockage(cInsts[id], Point(x, y) , -1);
-            incBlockage(cInsts[id], Point(old_location[i].x, old_location[i].y), 1);
-            cInsts[id].position = old_location[i];
-        }
-        for (auto &x : changed_net) {
-            DataBase.inc3DCon(Nets[x].segments, -1);
-            DataBase.inc2DCon(Nets[x].segments, -1);
-            totalCost += Nets[x].cost;
-        }
-        return false;
-    } 
-
+    
     // update stats
     for (auto &x : changed_net) {
         updateBox(Nets[x]);
@@ -394,7 +374,7 @@ bool Solver::route_after_move(const std::vector<int> &insts, const std::vector<P
         totalCost += Nets[x].cost;
     }
 
-    return true;
+    return flag;
 }
 
 void Solver::backup(const std::vector<int> &insts, const std::vector<int> &nets) {
@@ -409,17 +389,25 @@ void Solver::backup(const std::vector<int> &insts, const std::vector<int> &nets)
         backup_nets.push_back(Nets[idx]);
 }
 
+void Solver::take_result() {
+    dbg_print("Take the move\n");
+    for (auto netid : changed_net) {
+        DataBase.inc2DCon(Nets[netid].segments, -1);
+        DataBase.inc3DCon(Nets[netid].segments, -1);
+
+        NetHeap.insert(netid);
+    }
+
+    for (auto idx : backup_heap)
+        NetHeap.insert(idx);
+}
+
 void Solver::recover() {
-
-    for (int i = 0, n = backup_netids.size(); i < n; ++i)
-        NetHeap.erase(backup_netids[i]);
-
+    dbg_print("Don't take this move\n");
     for (int i = 0, n = backup_netids.size(); i < n; ++i) {
         int idx = backup_netids[i];
         auto &net = backup_nets[i];
 
-        DataBase.inc3DCon(Nets[idx].segments, 1);
-        DataBase.inc2DCon(Nets[idx].segments, 1);
         DataBase.inc3DCon(net.segments, -1);
         DataBase.inc2DCon(net.segments, -1);
 
@@ -428,7 +416,11 @@ void Solver::recover() {
 
         NetHeap.insert(idx);
     }
-    
+
+    for (auto idx : net_to_optimize)
+        NetHeap.erase(idx);
+    backup_heap.insert(backup_heap.end(), net_to_optimize.begin(), net_to_optimize.end());
+
     for (int i = 0, n = backup_insts.size(); i < n; ++i) {
         int idx = backup_instids[i];
         auto &inst = backup_insts[i];
@@ -447,7 +439,7 @@ void Solver::run() {
     dbg_print("Original Cost: %f\n", totalCost);
 
     /// simulated annealing
-    int max_step = 1;
+    int max_step = 3;
     float original_temp = sqrt(totalCost);
 
     for (int i = 0; i < max_step; ++i) {
@@ -462,28 +454,24 @@ void Solver::run() {
 
         auto insts = getMoveList();
         bool flag = route_after_move(insts.first, insts.second);
-        
-        if (flag == false) {
-            dbg_print("Failed");
 
-            /// prevent routing the same net in the next time and get no solution
-            backup_heap.push_back(*NetHeap.begin());
-            NetHeap.erase(NetHeap.begin());
+        if (!flag) {
+            dbg_print("Reroute Failed\n");
+            recover();
             continue;
         }
 
-        /// push the index erased before into net heap
-        for (auto idx : backup_heap)
-            NetHeap.insert(idx);
-        backup_heap.clear();
-
         float cost_after = totalCost;
 
-        if (cost_after > cost_before) {
+        if (cost_after >= cost_before) {
             float p = exp((cost_before - cost_after) / T);
-            if (p < ((double) rand() / RAND_MAX))
+            if (p < ((double) rand() / RAND_MAX)) {
                 recover();
+                continue;
+            }
         }
+
+        take_result();
     }
 
     dbg_print("Cost after movement and reroute: %f\n", totalCost);

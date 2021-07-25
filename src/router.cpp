@@ -118,18 +118,22 @@ bool Solver::mazeRouting(Edge &twopin) {
     while (!Q.empty()) {
         auto now = Q.front();
         Q.pop_front();
+
         if (now.first == en.x && now.second == en.y)
             break;
         for (int d = 0; d < 4; ++d) {
-            int nx = now.first + dir[d][0], ny = now.second + dir[d][0];
+            int nx = now.first + dir[d][0], ny = now.second + dir[d][1];
             if (nx <= 0 || nx > numRow || ny <= 0 || ny > numCol)
                 continue;
+
             if (Dist[nx][ny] != -1)
                 continue;
+
             if (DataBase.get2DCon(Point(nx, ny), d & 1) <= 0 ||
                 DataBase.get2DCon(Point(now.first, now.second), d & 1) <= 0)
                 continue;
-            Dist[nx][ny] = Dist[now.first][now.first] + 1;
+
+            Dist[nx][ny] = Dist[now.first][now.second] + 1;
             if (calc_dist(nx, ny) < calc_dist(st.x, st.y))
                 Q.push_front(std::make_pair(nx, ny));
             else
@@ -143,15 +147,19 @@ bool Solver::mazeRouting(Edge &twopin) {
     int nowx = en.x, nowy = en.y;
     int lastx = en.x, lasty = en.y;
     int lastHV = -1;
+    
 
-    while (nowx != st.x && nowy != st.y) {
+    while (nowx != st.x || nowy != st.y) {
         for (int d = 0; d < 4; ++d) {
             int nx = nowx + dir[d][0], ny = nowy + dir[d][1];
+
             if (nx <= 0 || nx > numRow || ny <= 0 || ny > numCol)
                 continue;
+
             if (DataBase.get2DCon(Point(nx, ny), d & 1) <= 0 ||
                 DataBase.get2DCon(Point(nowx, nowy), d & 1) <= 0)
                 continue;
+
             if (Dist[nx][ny] + 1 != Dist[nowx][nowy])
                 continue;
 
@@ -165,6 +173,7 @@ bool Solver::mazeRouting(Edge &twopin) {
             break;
         }
     }
+
     twopin.segs.push_back(Segment(Point(st.x, st.y), Point(lastx, lasty)));
     std::reverse(twopin.segs.begin(), twopin.segs.end());
     return true;
@@ -173,8 +182,8 @@ bool Solver::mazeRouting(Edge &twopin) {
 bool Solver::route2pin2d(Edge &twopin) {
     twopin.segs.clear();
     /// calculate bounding box
+
     Node &st = twopin.child, &en = twopin.parent;
-    dbg_print("(%d, %d) <-> (%d, %d)\n", st.x, st.y, en.x, en.y);
     int lX = std::min(en.x, st.x);
     int lY = std::min(en.y, st.y);
     int hX = std::max(en.x, st.x);
@@ -243,16 +252,11 @@ bool Solver::route2pin2d(Edge &twopin) {
 }
 
 bool Solver::route2d(RouteInfo &info) {
-    int cnt = 0;
     for (auto &node : info.tree.nodes)
-        for (auto &twopin : node.neighbor) {
-            cnt++;
-            if (route2pin2d(twopin) == false) {
-                dbg_print("(%d, %d) <--> (%d, %d)", twopin.child.x, twopin.child.y, twopin.parent.x, twopin.parent.y);
+        for (auto &twopin : node.neighbor) 
+            if (route2pin2d(twopin) == false) 
                 return false;
-            }
-        }
-    dbg_print("%d\n", cnt);
+
     return true;
 }
 

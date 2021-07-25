@@ -176,7 +176,12 @@ public:
         int flagH = st.y != en.y;
         int flagV = st.x != en.x;
         int flagZ = st.z != en.z;
-        DEBUG(if (flagH + flagV + flagZ > 1) dbg_print_line("error"));
+        DEBUG(if (flagH + flagV + flagZ > 1) {
+                dbg_print_line("error: ");
+                dbg_print_line("(%d %d %d) <-> (%d %d %d)\n", st.x, st.y, st.z, en.x, en.y, en.z);
+            }
+        );
+
         if (flagH) {
             int minCon = INF;
             for (int y = std::min(st.y, en.y); y <= std::max(st.y, en.y); ++y)

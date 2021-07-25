@@ -11,7 +11,7 @@ using std::map;
 using std::min;
 using std::max;
 
-const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 2, BETA = 30;
+const int MAXBOUND = 300, MAXLAYER = 20, ALPHA = 1, BETA = 30;
 
 int Solver::getLength(Net &net) {
     int sum = 0;
@@ -184,18 +184,35 @@ Solver::getMoveList() {
     std::vector<int> movedInst;
     std::vector<Point> locations;
 
-    int netid = *NetHeap.begin();
+    int maxChange = 10, RemainedMove = maxCellMove - cntCellMove;
+    int moveCnt = 0, moveCost = 0;;
+    net_to_optimize.clear();
 
-    for (auto &p : Nets[netid].pins) {
-        if (Lock[p.inst])
-            continue;
-        auto inst = cInsts[p.inst];
-        if (inst.movable == 0)        
-            continue;
-        movedInst.push_back(p.inst);
-        Lock[p.inst] = 1;
+    for (int netid : NetHeap) {
+        if (moveCnt >= maxChange || moveCost >= RemainedMove)
+            break;
+
+        net_to_optimize.push_back(netid);
+
+        for (auto &p : Nets[netid].pins) {
+            if (Lock[p.inst])
+                continue;
+
+            auto inst = cInsts[p.inst];
+
+            if (inst.movable == 0)        
+                continue;
+
+            moveCnt++;
+            if (!inst.movedFlag)
+                moveCost++;
+            
+            movedInst.push_back(p.inst);
+            Lock[p.inst] = 1;
+        }
     }
-    
+
+
     for (auto idx : movedInst)
         incBlockage(cInsts[idx], cInsts[idx].position, -1);
 
@@ -215,6 +232,13 @@ Solver::getMoveList() {
         incBlockage(cInsts[idx], cInsts[idx].position, 1);
 
     dbg_print("----------------------------\n");
+    dbg_print("Net To Optimize:");
+    for (auto idx : net_to_optimize) {
+        NetHeap.erase(idx);
+        dbg_print("%d ", idx);
+    }
+    dbg_print("\n");
+
     for (unsigned i = 0; i < movedInst.size(); ++i) {
         int idx = movedInst[i];
         dbg_print("Moved inst %s: ", cInsts[idx].name.c_str());
@@ -222,9 +246,6 @@ Solver::getMoveList() {
         dbg_print("(%d, %d)\n", locations[i].x, locations[i].y);
     }
     dbg_print("-----------------------------\n");
-    
-    for (auto idx : movedInst)
-        Lock[idx] = 0;
 
     return std::make_pair(movedInst, locations);
 }

@@ -38,6 +38,9 @@ private:
     std::vector<CellInst> backup_insts;
     std::vector<int> backup_instids;
 
+    std::vector<int> changed_net;
+    std::vector<int> net_to_optimize;
+    
     std::function<bool(int, int)> comparator;
 
     std::set<int, decltype(comparator)> NetHeap; ///
@@ -97,6 +100,8 @@ private:
 
     void printNet(Net &net);
     
+    void take_result();
+
     void recover();
 
     void backup(const std::vector<int> &insts, const std::vector<int> &nets);
